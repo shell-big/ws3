@@ -89,8 +89,8 @@ sudo apt install build-essential
 
 ### 🔄 ビルド手順
 ```bash
-git clone https://github.com/Oryosan59/WS3
-cd WS3
+git clone https://github.com/Oryosan59/ws3
+cd ws3
 make -f Makefile.mk
 ```
 
@@ -251,12 +251,12 @@ make -f Makefile.mk clean
 - `DEVICE`: **カメラのデバイスパス**（例: `/dev/video2`）。
 - `PORT`: **映像配信先のUDPポート番号**。
 - `WIDTH` / `HEIGHT`: **映像の解像度**。
-- `FRAMERATE_NUM`: **映像のフレームレート**。
+- `FRAMERATE_NUM` / `FRAMERATE_DEN`: **映像のフレームレート**。
 - `IS_H264_NATIVE_SOURCE`:
   - **説明:** カメラがH.264形式で直接映像を出力できるかどうかのフラグ。
   - **コード上の動作:** 
-    - `true`の場合: `v4l2src -> h264parse -> ...` という軽量なパイプラインを構築します。
-    - `false`の場合: `v4l2src -> jpegdec -> videoconvert -> x264enc -> ...` という、CPUでH.264へのエンコード処理を行うパイプラインを構築します。
+    - `true`の場合: `v4l2src -> h264parse -> ...` という軽量なパイプラインを構築します。ハードウェアエンコーダを利用するため、CPU負荷が低いのが特徴です。
+    - `false`の場合: `v4l2src -> jpegdec -> videoconvert -> x264enc -> ...` という、CPUでH.264へのエンコード処理（ソフトウェアエンコード）を行うパイプラインを構築します。
 - `X264_...` (BITRATE, TUNE, SPEED_PRESET): `IS_H264_NATIVE_SOURCE=false` の場合にのみ使用され、ソフトウェアエンコーダ`x264enc`の画質や速度を調整します。
 
 --- 

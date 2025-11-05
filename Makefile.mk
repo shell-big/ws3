@@ -79,3 +79,12 @@ clean:
 
 # --- 中間ファイルが削除されるのを防ぐ ---
 .SECONDARY: $(OBJS)
+
+# --- リリースビルド: 実行ファイルだけを残して他を削除 ---
+release: all
+	@echo "Preparing release build..."
+	@echo "Removing source code, object files, libraries, and documentation..."
+	rm -rf $(SRC_DIR) $(OBJ_DIR) $(INC_DIR) $(NAVIGATOR_LIB_PATH)
+	rm -f README.md ARCHITECTURE.md
+	@echo "Release ready. Only '$(TARGET)' remains."
+	@echo "Release build complete."
