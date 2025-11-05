@@ -91,7 +91,7 @@ sudo apt install build-essential
 ```bash
 git clone https://github.com/Oryosan59/ws3
 cd ws3
-make -f Makefile.mk
+make -f Makefile.mk release
 ```
 
 ### 🧹 クリーンアップ
