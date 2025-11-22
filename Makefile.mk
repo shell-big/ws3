@@ -84,7 +84,7 @@ clean:
 release: all
 	@echo "Preparing release build..."
 	@echo "Removing source code, object files, libraries, and documentation..."
-	rm -rf $(SRC_DIR) $(OBJ_DIR) $(INC_DIR) $(NAVIGATOR_LIB_PATH)
+	rm -rf $(SRC_DIR) $(OBJ_DIR) $(INC_DIR)
 	rm -f README.md ARCHITECTURE.md
 	@echo "Release ready. Only '$(TARGET)' remains."
 	@echo "Release build complete."
