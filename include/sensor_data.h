@@ -4,7 +4,7 @@
 #include <string>   // std::string を使用するため (現在は直接使用していないが、将来的に使う可能性あり)
 #include <vector>   // ADCデータなどの配列データを扱うために含める (現在は直接使用していない)
 #include <stddef.h> // size_t 型を使用するため
-#include "bindings.h" // AxisData 構造体の定義のためにインクルード
+#include "guarded_bindings.h" // AxisData 構造体の定義のためにインクルード
 
 #define SENSOR_BUFFER_SIZE 512 // センサーデータを格納する文字列バッファの推奨サイズ
 

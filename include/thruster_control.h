@@ -2,7 +2,7 @@
 #define THRUSTER_CONTROL_H // インクルードガード
 
 #include "gamepad.h"   // GamepadData 構造体の定義が必要なためインクルード
-#include "bindings.h"  // AxisData 構造体を使用するため (read_gyro() の戻り値型)
+#include "guarded_bindings.h"  // AxisData 構造体を使用するため (read_gyro() の戻り値型)
 #include "config.h"    // グローバル設定オブジェクト g_config を使用するため
 
 // --- 定数定義 ---
