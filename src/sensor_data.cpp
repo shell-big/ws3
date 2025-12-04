@@ -58,3 +58,16 @@ bool read_and_format_sensor_data(char *buffer, size_t buffer_size)
 
     return true; // フォーマット成功
 }
+
+// 加速度センサーの現在の生データを取得する関数
+AxisData get_accel_data()
+{
+    return read_accel();
+}
+
+// 加速度センサーのZ軸の現在の値のみを取得する関数
+float get_current_accz()
+{
+    AxisData accel = read_accel();
+    return accel.z;
+}

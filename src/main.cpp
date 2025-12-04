@@ -73,8 +73,23 @@ int main()
     std::cout << "クライアントからの最初のデータ受信を待機しています... (スラスターはPWM: " << initial_pwm_min << ")" << std::endl;
     thruster_set_all_pwm(initial_pwm_min);
 
+    // 最初のACCZ値を読み込み、次回の比較のために保存
+    float previous_accz = get_current_accz();
+    std::cout << "初期ACCZ: " << previous_accz << std::endl;
+
     while (running)
     {
+        // 現在のACCZ値を取得
+        float current_accz = get_current_accz();
+
+        // ACCZの符号反転をチェック (横転検出)
+        // 以前の値が正で現在の値が負、または以前の値が負で現在の値が正の場合
+        if ((previous_accz > 0 && current_accz < 0) || (previous_accz < 0 && current_accz > 0)) {
+            std::cerr << "ACCZ sign changed! Rollover detected. Terminating program." << std::endl;
+            running = false; // プログラムを終了するためにループを停止
+        }
+        previous_accz = current_accz; // 現在のACCZ値を次回の比較のために保存
+
         // --- 設定のローカルコピーを取得 ---
         double current_connection_timeout;
         unsigned int current_sensor_send_interval;
