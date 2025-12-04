@@ -13,10 +13,12 @@
 #include <sys/time.h> // gettimeofday
 #include <csignal> // シグナルハンドリング用
 #include <mutex>    // std::mutex, std::lock_guard
+#include <cmath>    // std::copysign を使用するため
 
 // --- グローバル変数 ---
 // AppConfig g_config; // config.cpp で定義
 // std::mutex g_config_mutex; // config.cpp で定義
+static float prev_accel_z_sign = 0.0f; // 前回の accel.z の符号を保存
 
 // --- メイン関数 ---
 int main()
@@ -146,6 +148,17 @@ int main()
         {
             current_gyro_data = read_gyro();
             thruster_update(latest_gamepad_data, current_gyro_data);
+            
+            // accel.z の符号反転チェック
+            AxisData current_accel = read_accel();
+            float current_accel_z_sign = std::copysign(1.0f, current_accel.z);
+            if (prev_accel_z_sign == 0.0f) {
+                prev_accel_z_sign = current_accel_z_sign; // 初回は符号を保存
+            } else if (current_accel_z_sign != prev_accel_z_sign && current_accel.z != 0.0f) {
+                std::cout << "致命的エラー: accel.z の符号が反転しました。プログラムを終了します。" << std::endl;
+                running = false;
+            }
+            prev_accel_z_sign = current_accel_z_sign; // 現在の符号を保存
 
             if (loop_counter >= current_sensor_send_interval)
             {
