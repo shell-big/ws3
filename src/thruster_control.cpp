@@ -83,21 +83,12 @@ bool thruster_init()
         current_pwm_values[i] = static_cast<float>(g_config.pwm_min); // 平滑化用の現在値も初期化
     }
 
-    // LEDチャンネルを初期状態 (OFF) に設定
+    // LEDチャンネルを初期状態 (OFF) に設定 (変数はOFFにするが、ハードウェアへの適用は後回し)
     current_led_state = LedState::OFF;
     current_led2_state = LedState::OFF;
     current_led3_state = LedState::OFF;
     current_led4_state = LedState::OFF;
     current_led5_state = LedState::OFF;
-
-    set_thruster_pwm(g_config.led_pwm_channel, g_config.led_pwm_off);
-    set_thruster_pwm(g_config.led2_pwm_channel, g_config.led2_pwm_off);
-    set_thruster_pwm(g_config.led3_pwm_channel, g_config.led3_pwm_off);
-    set_thruster_pwm(g_config.led4_pwm_channel, g_config.led4_pwm_off);
-    set_thruster_pwm(g_config.led5_pwm_channel, g_config.led5_pwm_off);
-    set_thruster_pwm(g_config.led4_pwm_channel, g_config.led4_pwm_off);
-    set_thruster_pwm(g_config.led5_pwm_channel, g_config.led5_pwm_off);
-    printf("Thrusters initialized to PWM %d. LEDs initialized to OFF.\n", g_config.pwm_min);
 
     // --- 保存されたLED状態があれば読み込む ---
     const char *state_file = "/tmp/rov_led_state.dat";
@@ -114,54 +105,58 @@ bool thruster_init()
             current_led3_state = states[2];
             current_led4_state = states[3];
             current_led5_state = states[4];
-
-            // 状態に基づいてPWM値を再適用
-            int val1 = (current_led_state == LedState::ON) ? g_config.led_pwm_on : g_config.led_pwm_off;
-            set_thruster_pwm(g_config.led_pwm_channel, val1);
-
-            int val2 = g_config.led2_pwm_off;
-            if (current_led2_state == LedState::ON1)
-                val2 = g_config.led2_pwm_on1;
-            else if (current_led2_state == LedState::ON2)
-                val2 = g_config.led2_pwm_on2;
-            else if (current_led2_state == LedState::MAX)
-                val2 = g_config.led2_pwm_max;
-            set_thruster_pwm(g_config.led2_pwm_channel, val2);
-
-            int val3 = g_config.led3_pwm_off;
-            if (current_led3_state == LedState::ON1)
-                val3 = g_config.led3_pwm_on1;
-            else if (current_led3_state == LedState::ON2)
-                val3 = g_config.led3_pwm_on2;
-            else if (current_led3_state == LedState::MAX)
-                val3 = g_config.led3_pwm_max;
-            set_thruster_pwm(g_config.led3_pwm_channel, val3);
-
-            int val4 = g_config.led4_pwm_off;
-            if (current_led4_state == LedState::ON1)
-                val4 = g_config.led4_pwm_on1;
-            else if (current_led4_state == LedState::ON2)
-                val4 = g_config.led4_pwm_on2;
-            else if (current_led4_state == LedState::MAX)
-                val4 = g_config.led4_pwm_max;
-            set_thruster_pwm(g_config.led4_pwm_channel, val4);
-
-            int val5 = g_config.led5_pwm_off;
-            if (current_led5_state == LedState::ON1)
-                val5 = g_config.led5_pwm_on1;
-            else if (current_led5_state == LedState::ON2)
-                val5 = g_config.led5_pwm_on2;
-            else if (current_led5_state == LedState::MAX)
-                val5 = g_config.led5_pwm_max;
-            set_thruster_pwm(g_config.led5_pwm_channel, val5);
         }
         ifs.close();
-        // 読み込み後はファイルを削除（1回のみ使用するため、およびOS再起動時等に誤って残らないように）
-        // ただし、ユーザー要望「タイムアウト時の再起動で保持」 -> ここで削除してOK。
-        // なぜなら、タイムアウト時に再度保存されるため。
-        // OS再起動(電源断)時は、/tmpなら消えているはず。
+        // 読み込み後はファイルを削除
         std::remove(state_file);
     }
+
+    // 決定した状態に基づいてPWM値を適用
+    // LED 1
+    int val1 = (current_led_state == LedState::ON) ? g_config.led_pwm_on : g_config.led_pwm_off;
+    set_thruster_pwm(g_config.led_pwm_channel, val1);
+
+    // LED 2
+    int val2 = g_config.led2_pwm_off;
+    if (current_led2_state == LedState::ON1)
+        val2 = g_config.led2_pwm_on1;
+    else if (current_led2_state == LedState::ON2)
+        val2 = g_config.led2_pwm_on2;
+    else if (current_led2_state == LedState::MAX)
+        val2 = g_config.led2_pwm_max;
+    set_thruster_pwm(g_config.led2_pwm_channel, val2);
+
+    // LED 3
+    int val3 = g_config.led3_pwm_off;
+    if (current_led3_state == LedState::ON1)
+        val3 = g_config.led3_pwm_on1;
+    else if (current_led3_state == LedState::ON2)
+        val3 = g_config.led3_pwm_on2;
+    else if (current_led3_state == LedState::MAX)
+        val3 = g_config.led3_pwm_max;
+    set_thruster_pwm(g_config.led3_pwm_channel, val3);
+
+    // LED 4
+    int val4 = g_config.led4_pwm_off;
+    if (current_led4_state == LedState::ON1)
+        val4 = g_config.led4_pwm_on1;
+    else if (current_led4_state == LedState::ON2)
+        val4 = g_config.led4_pwm_on2;
+    else if (current_led4_state == LedState::MAX)
+        val4 = g_config.led4_pwm_max;
+    set_thruster_pwm(g_config.led4_pwm_channel, val4);
+
+    // LED 5
+    int val5 = g_config.led5_pwm_off;
+    if (current_led5_state == LedState::ON1)
+        val5 = g_config.led5_pwm_on1;
+    else if (current_led5_state == LedState::ON2)
+        val5 = g_config.led5_pwm_on2;
+    else if (current_led5_state == LedState::MAX)
+        val5 = g_config.led5_pwm_max;
+    set_thruster_pwm(g_config.led5_pwm_channel, val5);
+
+    printf("Thrusters initialized to PWM %d. LEDs initialized.\n", g_config.pwm_min);
 
     return true;
 }
