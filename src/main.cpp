@@ -169,6 +169,9 @@ int main()
             else if (current_accel_z_sign != prev_accel_z_sign && current_accel.z != 0.0f)
             {
                 std::cout << "致命的エラー: accel.z の符号が反転しました。プログラムを終了します。" << std::endl;
+                // LED状態を保存し、PWM出力を保持して再起動させる
+                thruster_save_led_state_to_file();
+                currently_in_failsafe = true; // クリーンアップ時のPWM無効化をスキップさせるため
                 running = false;
             }
             prev_accel_z_sign = current_accel_z_sign; // 現在の符号を保存
