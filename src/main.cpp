@@ -209,9 +209,18 @@ int main()
         std::lock_guard<std::mutex> lock(g_config_mutex);
         final_pwm_min = g_config.pwm_min;
     }
-    thruster_set_all_pwm(final_pwm_min); // 最後に安全な値に設定
-    thruster_disable();
-    std::cout << "PWMの出力を停止しました..." << std::endl;
+    thruster_set_all_pwm(final_pwm_min); // 最後に安全な値に設定 (スラスターのみ停止)
+
+    // フェイルセーフ（タイムアウト）による再起動の場合は、PWMを無効化しない
+    if (!currently_in_failsafe)
+    {
+        thruster_disable();
+        std::cout << "PWMの出力を停止しました..." << std::endl;
+    }
+    else
+    {
+        std::cout << "再起動のためPWM出力を保持します (thruster_disableをスキップ)..." << std::endl;
+    }
     network_close(&net_ctx);
     std::cout << "ネットワークをクローズしました..." << std::endl;
     stop_gstreamer_pipelines();
