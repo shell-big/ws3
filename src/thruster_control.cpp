@@ -3,6 +3,8 @@
 #include <algorithm> // std::max, std::min のため
 #include <stdio.h>   // printf のため
 #include "config.h"  // グローバル設定オブジェクト g_config を使用するため
+#include <fstream>   // std::ofstream, std::ifstream
+#include <cstdio>    // std::remove
 
 // 現在のPWM値を保持する静的変数（実際に出力される値）
 static float current_pwm_values[NUM_THRUSTERS]; // 初期化は thruster_init で行う
@@ -93,7 +95,74 @@ bool thruster_init()
     set_thruster_pwm(g_config.led3_pwm_channel, g_config.led3_pwm_off);
     set_thruster_pwm(g_config.led4_pwm_channel, g_config.led4_pwm_off);
     set_thruster_pwm(g_config.led5_pwm_channel, g_config.led5_pwm_off);
+    set_thruster_pwm(g_config.led4_pwm_channel, g_config.led4_pwm_off);
+    set_thruster_pwm(g_config.led5_pwm_channel, g_config.led5_pwm_off);
     printf("Thrusters initialized to PWM %d. LEDs initialized to OFF.\n", g_config.pwm_min);
+
+    // --- 保存されたLED状態があれば読み込む ---
+    const char *state_file = "/tmp/rov_led_state.dat";
+    std::ifstream ifs(state_file, std::ios::binary);
+    if (ifs)
+    {
+        printf("Restoring LED state from %s...\n", state_file);
+        // 単純なバイナリ読み込み
+        LedState states[5];
+        if (ifs.read(reinterpret_cast<char *>(states), sizeof(states)))
+        {
+            current_led_state = states[0];
+            current_led2_state = states[1];
+            current_led3_state = states[2];
+            current_led4_state = states[3];
+            current_led5_state = states[4];
+
+            // 状態に基づいてPWM値を再適用
+            int val1 = (current_led_state == LedState::ON) ? g_config.led_pwm_on : g_config.led_pwm_off;
+            set_thruster_pwm(g_config.led_pwm_channel, val1);
+
+            int val2 = g_config.led2_pwm_off;
+            if (current_led2_state == LedState::ON1)
+                val2 = g_config.led2_pwm_on1;
+            else if (current_led2_state == LedState::ON2)
+                val2 = g_config.led2_pwm_on2;
+            else if (current_led2_state == LedState::MAX)
+                val2 = g_config.led2_pwm_max;
+            set_thruster_pwm(g_config.led2_pwm_channel, val2);
+
+            int val3 = g_config.led3_pwm_off;
+            if (current_led3_state == LedState::ON1)
+                val3 = g_config.led3_pwm_on1;
+            else if (current_led3_state == LedState::ON2)
+                val3 = g_config.led3_pwm_on2;
+            else if (current_led3_state == LedState::MAX)
+                val3 = g_config.led3_pwm_max;
+            set_thruster_pwm(g_config.led3_pwm_channel, val3);
+
+            int val4 = g_config.led4_pwm_off;
+            if (current_led4_state == LedState::ON1)
+                val4 = g_config.led4_pwm_on1;
+            else if (current_led4_state == LedState::ON2)
+                val4 = g_config.led4_pwm_on2;
+            else if (current_led4_state == LedState::MAX)
+                val4 = g_config.led4_pwm_max;
+            set_thruster_pwm(g_config.led4_pwm_channel, val4);
+
+            int val5 = g_config.led5_pwm_off;
+            if (current_led5_state == LedState::ON1)
+                val5 = g_config.led5_pwm_on1;
+            else if (current_led5_state == LedState::ON2)
+                val5 = g_config.led5_pwm_on2;
+            else if (current_led5_state == LedState::MAX)
+                val5 = g_config.led5_pwm_max;
+            set_thruster_pwm(g_config.led5_pwm_channel, val5);
+        }
+        ifs.close();
+        // 読み込み後はファイルを削除（1回のみ使用するため、およびOS再起動時等に誤って残らないように）
+        // ただし、ユーザー要望「タイムアウト時の再起動で保持」 -> ここで削除してOK。
+        // なぜなら、タイムアウト時に再度保存されるため。
+        // OS再起動(電源断)時は、/tmpなら消えているはず。
+        std::remove(state_file);
+    }
+
     return true;
 }
 
@@ -523,6 +592,28 @@ std::string get_led_state_string()
              led_state_to_string(current_led4_state).c_str(),
              led_state_to_string(current_led5_state).c_str());
     return std::string(buffer);
+}
+
+// LEDの状態をファイルに保存する
+void thruster_save_led_state_to_file()
+{
+    const char *state_file = "/tmp/rov_led_state.dat";
+    std::ofstream ofs(state_file, std::ios::binary | std::ios::trunc);
+    if (ofs)
+    {
+        LedState states[5] = {
+            current_led_state,
+            current_led2_state,
+            current_led3_state,
+            current_led4_state,
+            current_led5_state};
+        ofs.write(reinterpret_cast<const char *>(states), sizeof(states));
+        printf("LED State saved to %s\n", state_file);
+    }
+    else
+    {
+        perror("Failed to save LED state");
+    }
 }
 
 // 平滑化係数を動的に変更する関数（オプション）

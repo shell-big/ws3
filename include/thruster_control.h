@@ -26,4 +26,7 @@ void thruster_set_all_pwm(int pwm_value);
 // LEDの状態を文字列として取得する (同期用)
 std::string get_led_state_string();
 
+// LEDの状態をファイルに保存する (フェイルセーフ/再起動時の状態保持用)
+void thruster_save_led_state_to_file();
+
 #endif // THRUSTER_CONTROL_H

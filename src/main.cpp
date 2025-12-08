@@ -143,6 +143,8 @@ int main()
                     currently_in_failsafe = true;
                     // GStreamerのクリーンな再確立のため、プロセスを終了してsystemdによる再起動に任せる
                     std::cout << "フェイルセーフ起動のためプログラムを終了します。" << std::endl;
+                    // LED状態を保存してから終了
+                    thruster_save_led_state_to_file();
                     running = false;
                 }
             }
