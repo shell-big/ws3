@@ -7,6 +7,23 @@
 // 現在のPWM値を保持する静的変数（実際に出力される値）
 static float current_pwm_values[NUM_THRUSTERS]; // 初期化は thruster_init で行う
 
+// --- LED状態管理 ---
+enum class LedState
+{
+    OFF,
+    ON,  // 単純なON/OFF用 (LED 1)
+    ON1, // 多段調光用 (LED 2-5)
+    ON2,
+    MAX
+};
+
+// 各LEDの現在の状態を保持 (ファイルスコープ)
+static LedState current_led_state = LedState::OFF;
+static LedState current_led2_state = LedState::OFF;
+static LedState current_led3_state = LedState::OFF;
+static LedState current_led4_state = LedState::OFF;
+static LedState current_led5_state = LedState::OFF;
+
 // --- 定数 (config.h から移動) ---
 // --- ヘルパー関数 ---
 
@@ -57,28 +74,26 @@ bool thruster_init()
     printf("Setting PWM frequency to %.1f Hz\n", g_config.pwm_frequency);
     set_pwm_freq_hz(g_config.pwm_frequency); // NOLINT
 
-    
     // すべてのスラスターをニュートラル/最小値に初期化
     for (int i = 0; i < NUM_THRUSTERS; ++i)
     { // NOLINT
         set_thruster_pwm(i, g_config.pwm_min);
         current_pwm_values[i] = static_cast<float>(g_config.pwm_min); // 平滑化用の現在値も初期化
     }
-    
+
     // LEDチャンネルを初期状態 (OFF) に設定
+    current_led_state = LedState::OFF;
+    current_led2_state = LedState::OFF;
+    current_led3_state = LedState::OFF;
+    current_led4_state = LedState::OFF;
+    current_led5_state = LedState::OFF;
+
     set_thruster_pwm(g_config.led_pwm_channel, g_config.led_pwm_off);
-    // 新しいLED2チャンネルを初期状態 (OFF) に設定
     set_thruster_pwm(g_config.led2_pwm_channel, g_config.led2_pwm_off);
     set_thruster_pwm(g_config.led3_pwm_channel, g_config.led3_pwm_off);
     set_thruster_pwm(g_config.led4_pwm_channel, g_config.led4_pwm_off);
     set_thruster_pwm(g_config.led5_pwm_channel, g_config.led5_pwm_off);
-    printf("Thrusters initialized to PWM %d. LED on Ch%d initialized to PWM %d (OFF). LED2 on Ch%d initialized to PWM %d (OFF). LED3 on Ch%d initialized to PWM %d (OFF). LED4 on Ch%d initialized to PWM %d (OFF). LED5 on Ch%d initialized to PWM %d (OFF).\n", 
-        g_config.pwm_min, 
-        g_config.led_pwm_channel, g_config.led_pwm_off, 
-        g_config.led2_pwm_channel, g_config.led2_pwm_off,
-        g_config.led3_pwm_channel, g_config.led3_pwm_off,
-        g_config.led4_pwm_channel, g_config.led4_pwm_off,
-        g_config.led5_pwm_channel, g_config.led5_pwm_off);
+    printf("Thrusters initialized to PWM %d. LEDs initialized to OFF.\n", g_config.pwm_min);
     return true;
 }
 
@@ -104,7 +119,8 @@ void thruster_disable()
 static void update_horizontal_thrusters(const GamepadData &data, const AxisData &gyro_data, int target_pwm_out[4])
 {
     // 目標PWM配列をニュートラル/最小値に初期化
-    for (int i = 0; i < 4; ++i) { // NOLINT
+    for (int i = 0; i < 4; ++i)
+    { // NOLINT
         target_pwm_out[i] = g_config.pwm_min;
     }
 
@@ -269,43 +285,46 @@ void thruster_update(const GamepadData &gamepad_data, const AxisData &gyro_data)
     int target_forward_pwm = calculate_forward_reverse_pwm(gamepad_data.rightThumbY);
 
     // --- 平滑化処理：現在値を目標値に向けて線形補間 ---
-    
+
     // 水平スラスター (Ch0-3) の平滑化
     for (int i = 0; i < 4; ++i)
     {
         current_pwm_values[i] = smooth_interpolate(
-            current_pwm_values[i], 
+            current_pwm_values[i],
             static_cast<float>(target_horizontal_pwm[i]),
-            g_config.smoothing_factor_horizontal
-        );
+            g_config.smoothing_factor_horizontal);
     }
-    
+
     // 前進/後退スラスター (Ch4, Ch5) の平滑化
     float target_forward_val = static_cast<float>(target_forward_pwm);
 
-    if (target_forward_val > current_pwm_values[4]) { // 加速時のみ平滑化
+    if (target_forward_val > current_pwm_values[4])
+    { // 加速時のみ平滑化
         current_pwm_values[4] = smooth_interpolate(
-            current_pwm_values[4], 
+            current_pwm_values[4],
             target_forward_val,
-            g_config.smoothing_factor_vertical
-        );
-    } else { // 減速時または維持時は即座に適用
+            g_config.smoothing_factor_vertical);
+    }
+    else
+    { // 減速時または維持時は即座に適用
         current_pwm_values[4] = target_forward_val;
     }
 
-    if (target_forward_val > current_pwm_values[5]) { // 加速時のみ平滑化
+    if (target_forward_val > current_pwm_values[5])
+    { // 加速時のみ平滑化
         current_pwm_values[5] = smooth_interpolate(
-            current_pwm_values[5], 
+            current_pwm_values[5],
             target_forward_val,
-            g_config.smoothing_factor_vertical
-        );
-    } else { // 減速時または維持時は即座に適用
+            g_config.smoothing_factor_vertical);
+    }
+    else
+    { // 減速時または維持時は即座に適用
         current_pwm_values[5] = target_forward_val;
     }
 
     // --- PWM信号をスラスターに送信 ---
     printf("--- Thruster and LED PWM (Smoothed) ---\n");
-    
+
     // 水平スラスター
     for (int i = 0; i < 4; ++i)
     {
@@ -313,7 +332,7 @@ void thruster_update(const GamepadData &gamepad_data, const AxisData &gyro_data)
         set_thruster_pwm(i, smoothed_pwm);
         printf("Ch%d: Target=%d, Smoothed=%d\n", i, target_horizontal_pwm[i], smoothed_pwm);
     }
-    
+
     // 前進/後退スラスター
     int smoothed_forward_pwm = static_cast<int>(current_pwm_values[4]);
     set_thruster_pwm(4, smoothed_forward_pwm);
@@ -321,158 +340,189 @@ void thruster_update(const GamepadData &gamepad_data, const AxisData &gyro_data)
     printf("Ch4&5: Target=%d, Smoothed=%d\n", target_forward_pwm, smoothed_forward_pwm);
 
     // --- LED制御 (平滑化なし) ---
-    static int current_led_pwm = g_config.led_pwm_off;
+    // static int current_led_pwm = g_config.led_pwm_off; // 廃止: ファイルスコープ変数を使用
     static bool y_button_previously_pressed = false;
 
     bool y_button_currently_pressed = (gamepad_data.buttons & GamepadButton::Y);
 
     if (y_button_currently_pressed && !y_button_previously_pressed)
     {
-        if (current_led_pwm == g_config.led_pwm_off)
+        if (current_led_state == LedState::OFF)
         {
-            current_led_pwm = g_config.led_pwm_on;
+            current_led_state = LedState::ON;
         }
         else
         {
-            current_led_pwm = g_config.led_pwm_off;
+            current_led_state = LedState::OFF;
         }
     }
     y_button_previously_pressed = y_button_currently_pressed;
 
-    set_thruster_pwm(g_config.led_pwm_channel, current_led_pwm);
-    printf("Ch%d: LED PWM = %d (%s)\n", g_config.led_pwm_channel, current_led_pwm, (current_led_pwm == g_config.led_pwm_on ? "ON" : "OFF"));
+    // 状態に基づいてPWM値を決定
+    int led_pwm_val = (current_led_state == LedState::ON) ? g_config.led_pwm_on : g_config.led_pwm_off;
+    set_thruster_pwm(g_config.led_pwm_channel, led_pwm_val);
+    // printf("Ch%d: LED State = %d, PWM = %d\n", g_config.led_pwm_channel, (int)current_led_state, led_pwm_val);
 
     // --- LED 2 (十字キー上) 制御 ---
-    static int current_led2_pwm = g_config.led2_pwm_off;
+    // static int current_led2_pwm = g_config.led2_pwm_off; // 廃止
     static bool dpad_up_button_previously_pressed = false;
-
     bool dpad_up_button_currently_pressed = (gamepad_data.buttons & GamepadButton::DPadUp);
 
     if (dpad_up_button_currently_pressed && !dpad_up_button_previously_pressed)
     {
-        if (current_led2_pwm == g_config.led2_pwm_off) {
-            current_led2_pwm = g_config.led2_pwm_on1;
-        } else if (current_led2_pwm == g_config.led2_pwm_on1) {
-            current_led2_pwm = g_config.led2_pwm_on2;
-        } else if (current_led2_pwm == g_config.led2_pwm_on2) {
-            current_led2_pwm = g_config.led2_pwm_max;
-        } else {
-            current_led2_pwm = g_config.led2_pwm_off;
-        }
+        if (current_led2_state == LedState::OFF)
+            current_led2_state = LedState::ON1;
+        else if (current_led2_state == LedState::ON1)
+            current_led2_state = LedState::ON2;
+        else if (current_led2_state == LedState::ON2)
+            current_led2_state = LedState::MAX;
+        else
+            current_led2_state = LedState::OFF;
     }
     dpad_up_button_previously_pressed = dpad_up_button_currently_pressed;
 
-    set_thruster_pwm(g_config.led2_pwm_channel, current_led2_pwm);
-    const char* led2_state_str = "UNKNOWN";
-    if (current_led2_pwm == g_config.led2_pwm_off) led2_state_str = "OFF";
-    else if (current_led2_pwm == g_config.led2_pwm_on1) led2_state_str = "ON1";
-    else if (current_led2_pwm == g_config.led2_pwm_on2) led2_state_str = "ON2";
-    else if (current_led2_pwm == g_config.led2_pwm_max) led2_state_str = "MAX";
-    printf("Ch%d: LED2 PWM = %d (%s)\n", g_config.led2_pwm_channel, current_led2_pwm, led2_state_str);
+    int led2_pwm_val = g_config.led2_pwm_off;
+    if (current_led2_state == LedState::ON1)
+        led2_pwm_val = g_config.led2_pwm_on1;
+    else if (current_led2_state == LedState::ON2)
+        led2_pwm_val = g_config.led2_pwm_on2;
+    else if (current_led2_state == LedState::MAX)
+        led2_pwm_val = g_config.led2_pwm_max;
+
+    set_thruster_pwm(g_config.led2_pwm_channel, led2_pwm_val);
 
     // --- LED 3 (十字キー下) 制御 ---
-    static int current_led3_pwm = g_config.led3_pwm_off;
     static bool dpad_down_button_previously_pressed = false;
-
     bool dpad_down_button_currently_pressed = (gamepad_data.buttons & GamepadButton::DPadDown);
 
     if (dpad_down_button_currently_pressed && !dpad_down_button_previously_pressed)
     {
-        if (current_led3_pwm == g_config.led3_pwm_off) {
-            current_led3_pwm = g_config.led3_pwm_on1;
-        } else if (current_led3_pwm == g_config.led3_pwm_on1) {
-            current_led3_pwm = g_config.led3_pwm_on2;
-        } else if (current_led3_pwm == g_config.led3_pwm_on2) {
-            current_led3_pwm = g_config.led3_pwm_max;
-        } else {
-            current_led3_pwm = g_config.led3_pwm_off;
-        }
+        if (current_led3_state == LedState::OFF)
+            current_led3_state = LedState::ON1;
+        else if (current_led3_state == LedState::ON1)
+            current_led3_state = LedState::ON2;
+        else if (current_led3_state == LedState::ON2)
+            current_led3_state = LedState::MAX;
+        else
+            current_led3_state = LedState::OFF;
     }
     dpad_down_button_previously_pressed = dpad_down_button_currently_pressed;
 
-    set_thruster_pwm(g_config.led3_pwm_channel, current_led3_pwm);
-    const char* led3_state_str = "UNKNOWN";
-    if (current_led3_pwm == g_config.led3_pwm_off) led3_state_str = "OFF";
-    else if (current_led3_pwm == g_config.led3_pwm_on1) led3_state_str = "ON1";
-    else if (current_led3_pwm == g_config.led3_pwm_on2) led3_state_str = "ON2";
-    else if (current_led3_pwm == g_config.led3_pwm_max) led3_state_str = "MAX";
-    printf("Ch%d: LED3 PWM = %d (%s)\n", g_config.led3_pwm_channel, current_led3_pwm, led3_state_str);
+    int led3_pwm_val = g_config.led3_pwm_off;
+    if (current_led3_state == LedState::ON1)
+        led3_pwm_val = g_config.led3_pwm_on1;
+    else if (current_led3_state == LedState::ON2)
+        led3_pwm_val = g_config.led3_pwm_on2;
+    else if (current_led3_state == LedState::MAX)
+        led3_pwm_val = g_config.led3_pwm_max;
+
+    set_thruster_pwm(g_config.led3_pwm_channel, led3_pwm_val);
 
     // --- LED 4 (十字キー左) 制御 ---
-    static int current_led4_pwm = g_config.led4_pwm_off;
     static bool dpad_left_button_previously_pressed = false;
-
     bool dpad_left_button_currently_pressed = (gamepad_data.buttons & GamepadButton::DPadLeft);
 
     if (dpad_left_button_currently_pressed && !dpad_left_button_previously_pressed)
     {
-        if (current_led4_pwm == g_config.led4_pwm_off) {
-            current_led4_pwm = g_config.led4_pwm_on1;
-        } else if (current_led4_pwm == g_config.led4_pwm_on1) {
-            current_led4_pwm = g_config.led4_pwm_on2;
-        } else if (current_led4_pwm == g_config.led4_pwm_on2) {
-            current_led4_pwm = g_config.led4_pwm_max;
-        } else {
-            current_led4_pwm = g_config.led4_pwm_off;
-        }
+        if (current_led4_state == LedState::OFF)
+            current_led4_state = LedState::ON1;
+        else if (current_led4_state == LedState::ON1)
+            current_led4_state = LedState::ON2;
+        else if (current_led4_state == LedState::ON2)
+            current_led4_state = LedState::MAX;
+        else
+            current_led4_state = LedState::OFF;
     }
     dpad_left_button_previously_pressed = dpad_left_button_currently_pressed;
 
-    set_thruster_pwm(g_config.led4_pwm_channel, current_led4_pwm);
-    const char* led4_state_str = "UNKNOWN";
-    if (current_led4_pwm == g_config.led4_pwm_off) led4_state_str = "OFF";
-    else if (current_led4_pwm == g_config.led4_pwm_on1) led4_state_str = "ON1";
-    else if (current_led4_pwm == g_config.led4_pwm_on2) led4_state_str = "ON2";
-    else if (current_led4_pwm == g_config.led4_pwm_max) led4_state_str = "MAX";
-    printf("Ch%d: LED4 PWM = %d (%s)\n", g_config.led4_pwm_channel, current_led4_pwm, led4_state_str);
+    int led4_pwm_val = g_config.led4_pwm_off;
+    if (current_led4_state == LedState::ON1)
+        led4_pwm_val = g_config.led4_pwm_on1;
+    else if (current_led4_state == LedState::ON2)
+        led4_pwm_val = g_config.led4_pwm_on2;
+    else if (current_led4_state == LedState::MAX)
+        led4_pwm_val = g_config.led4_pwm_max;
+
+    set_thruster_pwm(g_config.led4_pwm_channel, led4_pwm_val);
 
     // --- LED 5 (十字キー右) 制御 ---
-    static int current_led5_pwm = g_config.led5_pwm_off;
     static bool dpad_right_button_previously_pressed = false;
-
     bool dpad_right_button_currently_pressed = (gamepad_data.buttons & GamepadButton::DPadRight);
 
     if (dpad_right_button_currently_pressed && !dpad_right_button_previously_pressed)
     {
-        if (current_led5_pwm == g_config.led5_pwm_off) {
-            current_led5_pwm = g_config.led5_pwm_on1;
-        } else if (current_led5_pwm == g_config.led5_pwm_on1) {
-            current_led5_pwm = g_config.led5_pwm_on2;
-        } else if (current_led5_pwm == g_config.led5_pwm_on2) {
-            current_led5_pwm = g_config.led5_pwm_max;
-        } else {
-            current_led5_pwm = g_config.led5_pwm_off;
-        }
+        if (current_led5_state == LedState::OFF)
+            current_led5_state = LedState::ON1;
+        else if (current_led5_state == LedState::ON1)
+            current_led5_state = LedState::ON2;
+        else if (current_led5_state == LedState::ON2)
+            current_led5_state = LedState::MAX;
+        else
+            current_led5_state = LedState::OFF;
     }
     dpad_right_button_previously_pressed = dpad_right_button_currently_pressed;
 
-    set_thruster_pwm(g_config.led5_pwm_channel, current_led5_pwm);
-    const char* led5_state_str = "UNKNOWN";
-    if (current_led5_pwm == g_config.led5_pwm_off) led5_state_str = "OFF";
-    else if (current_led5_pwm == g_config.led5_pwm_on1) led5_state_str = "ON1";
-    else if (current_led5_pwm == g_config.led5_pwm_on2) led5_state_str = "ON2";
-    else if (current_led5_pwm == g_config.led5_pwm_max) led5_state_str = "MAX";
-    printf("Ch%d: LED5 PWM = %d (%s)\n", g_config.led5_pwm_channel, current_led5_pwm, led5_state_str);
+    int led5_pwm_val = g_config.led5_pwm_off;
+    if (current_led5_state == LedState::ON1)
+        led5_pwm_val = g_config.led5_pwm_on1;
+    else if (current_led5_state == LedState::ON2)
+        led5_pwm_val = g_config.led5_pwm_on2;
+    else if (current_led5_state == LedState::MAX)
+        led5_pwm_val = g_config.led5_pwm_max;
 
-
-
+    set_thruster_pwm(g_config.led5_pwm_channel, led5_pwm_val);
 
     printf("--------------------\n");
 }
 
-// すべてのスラスターを指定されたPWM値に設定し、LEDをオフにする関数
+// すべてのスラスターを指定されたPWM値に設定し、LEDは変更しない関数
 void thruster_set_all_pwm(int pwm_value)
 {
+    // スラスター (Ch0-5) のみ変更
     for (int i = 0; i < NUM_THRUSTERS; ++i)
     {
         set_thruster_pwm(i, pwm_value);
         current_pwm_values[i] = static_cast<float>(pwm_value); // 平滑化用の現在値も更新
     }
-    set_thruster_pwm(g_config.led_pwm_channel, g_config.led_pwm_off);
-    set_thruster_pwm(g_config.led2_pwm_channel, g_config.led2_pwm_off);
-    set_thruster_pwm(g_config.led3_pwm_channel, g_config.led3_pwm_off);
-    set_thruster_pwm(g_config.led4_pwm_channel, g_config.led4_pwm_off);
-    set_thruster_pwm(g_config.led5_pwm_channel, g_config.led5_pwm_off);
+    // LEDはそのまま保持
+}
+
+// 状態を文字列にするヘルパー
+static std::string led_state_to_string(LedState state)
+{
+    switch (state)
+    {
+    case LedState::OFF:
+        return "pwm_off";
+    case LedState::ON:
+        return "pwm_on";
+    case LedState::ON1:
+        return "pwm_on1";
+    case LedState::ON2:
+        return "pwm_on2";
+    case LedState::MAX:
+        return "pwm_max";
+    default:
+        return "unknown";
+    }
+}
+
+// LEDの状態を文字列として取得する
+std::string get_led_state_string()
+{
+    // フォーマット: led_status:led=<state>,led2=<state>,...
+    // ユーザー要求: "pwm_off,pwm_on1,pwm_on2,pwm_max" を送る
+    // 複数のLEDがあるので、それぞれの状態を送る必要があると思われます。
+    // ここではカンマ区切りで各LEDの状態を送ります。
+
+    char buffer[256];
+    snprintf(buffer, sizeof(buffer), "led_status:led=%s,led2=%s,led3=%s,led4=%s,led5=%s",
+             led_state_to_string(current_led_state).c_str(),
+             led_state_to_string(current_led2_state).c_str(),
+             led_state_to_string(current_led3_state).c_str(),
+             led_state_to_string(current_led4_state).c_str(),
+             led_state_to_string(current_led5_state).c_str());
+    return std::string(buffer);
 }
 
 // 平滑化係数を動的に変更する関数（オプション）

@@ -1,19 +1,19 @@
 // --- インクルード ---
-#include "network.h"          // ネットワーク通信関連 (UDP送受信)
-#include "gamepad.h"          // ゲームパッドデータ構造体とパース関数
-#include "thruster_control.h" // スラスター制御関連
-#include "sensor_data.h"      // センサーデータ読み取り・フォーマット関連
-#include "gstPipeline.h"      // GStreamerパイプライン起動用
-#include "config.h"           // 設定ファイル読み込みとグローバル設定オブジェクト
+#include "network.h"             // ネットワーク通信関連 (UDP送受信)
+#include "gamepad.h"             // ゲームパッドデータ構造体とパース関数
+#include "thruster_control.h"    // スラスター制御関連
+#include "sensor_data.h"         // センサーデータ読み取り・フォーマット関連
+#include "gstPipeline.h"         // GStreamerパイプライン起動用
+#include "config.h"              // 設定ファイル読み込みとグローバル設定オブジェクト
 #include "config_synchronizer.h" // 設定同期用
 
-#include <iostream> // 標準入出力 (std::cout, std::cerr)
-#include <unistd.h> // POSIX API (usleep)
-#include <string.h> // strlen
+#include <iostream>   // 標準入出力 (std::cout, std::cerr)
+#include <unistd.h>   // POSIX API (usleep)
+#include <string.h>   // strlen
 #include <sys/time.h> // gettimeofday
-#include <csignal> // シグナルハンドリング用
-#include <mutex>    // std::mutex, std::lock_guard
-#include <cmath>    // std::copysign を使用するため
+#include <csignal>    // シグナルハンドリング用
+#include <mutex>      // std::mutex, std::lock_guard
+#include <cmath>      // std::copysign を使用するため
 
 // --- グローバル変数 ---
 // AppConfig g_config; // config.cpp で定義
@@ -25,7 +25,8 @@ int main()
 {
     printf("Navigator C++ Control Application\n");
     // --- 設定ファイルの読み込み ---
-    if (!loadConfig("config.ini")) {
+    if (!loadConfig("config.ini"))
+    {
         std::cerr << "致命的エラー: 設定ファイルの初期読み込みに失敗しました。プログラムを終了します。" << std::endl;
         return -1;
     }
@@ -92,9 +93,11 @@ int main()
         }
 
         // 設定ファイルが外部から更新されたかチェックし、リロードする
-        if (g_config_updated_flag.load()) {
+        if (g_config_updated_flag.load())
+        {
             std::cout << "設定ファイルが更新されました。リロードします..." << std::endl;
-            if (!loadConfig("config.ini")) {
+            if (!loadConfig("config.ini"))
+            {
                 std::cerr << "警告: 設定ファイルのリロードに失敗しました。古い設定で動作を継続します。" << std::endl;
             }
             g_config_updated_flag.store(false); // フラグをリセット
@@ -119,6 +122,11 @@ int main()
             {
                 std::cout << "接続確立/再確立。通常動作を再開します。" << std::endl;
                 currently_in_failsafe = false;
+
+                // --- LED状態の同期パケットを送信 ---
+                std::string led_state_str = get_led_state_string();
+                network_send(&net_ctx, led_state_str.c_str(), led_state_str.length());
+                std::cout << "LED状態同期パケットを送信しました: " << led_state_str << std::endl;
             }
             std::string received_str(recv_buffer, recv_len);
             latest_gamepad_data = parseGamepadData(received_str);
@@ -148,13 +156,16 @@ int main()
         {
             current_gyro_data = read_gyro();
             thruster_update(latest_gamepad_data, current_gyro_data);
-            
+
             // accel.z の符号反転チェック
             AxisData current_accel = read_accel();
             float current_accel_z_sign = std::copysign(1.0f, current_accel.z);
-            if (prev_accel_z_sign == 0.0f) {
+            if (prev_accel_z_sign == 0.0f)
+            {
                 prev_accel_z_sign = current_accel_z_sign; // 初回は符号を保存
-            } else if (current_accel_z_sign != prev_accel_z_sign && current_accel.z != 0.0f) {
+            }
+            else if (current_accel_z_sign != prev_accel_z_sign && current_accel.z != 0.0f)
+            {
                 std::cout << "致命的エラー: accel.z の符号が反転しました。プログラムを終了します。" << std::endl;
                 running = false;
             }
@@ -190,7 +201,7 @@ int main()
     std::cout << "クリーンアップ処理を開始します..." << std::endl;
     config_sync.stop();
     std::cout << "設定同期スレッドを停止しました..." << std::endl;
-    
+
     int final_pwm_min;
     {
         std::lock_guard<std::mutex> lock(g_config_mutex);
