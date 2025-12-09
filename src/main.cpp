@@ -183,6 +183,10 @@ int main()
                 {
                     std::cout << "[SENSOR LOG] " << sensor_buffer << std::endl;
                     network_send(&net_ctx, sensor_buffer, strlen(sensor_buffer));
+
+                    // LEDのUIがずれるのを防ぐため、定期的に状態を送信する
+                    std::string led_state_str = get_led_state_string();
+                    network_send(&net_ctx, led_state_str.c_str(), led_state_str.length());
                 }
                 else
                 {
