@@ -283,12 +283,12 @@ Description=Navigator Control Service
 After=network.target
 
 [Service]
-ExecStart=/home/pi/ws3lan/bin/navigator_control
-WorkingDirectory=/home/pi/ws3lan
+ExecStart=/home/pi/ws3/bin/navigator_control
+WorkingDirectory=/home/pi/ws3
 StandardOutput=journal
 StandardError=journal
 Restart=always
-RestartSec=3
+RestartSec=0.5
 User=pi
 
 [Install]
@@ -297,7 +297,7 @@ WantedBy=multi-user.target
 
 **🔍 設定のポイント**
 - `Restart=always`: プログラムが終了（正常・異常どちらでも）すると、常に再実行されます。
-- `RestartSec=3`: 再実行する前に3秒間待機します。これにより、連続クラッシュによるサーバー負荷を避けます。
+- `RestartSec=0.5`: 再実行する前に0.5秒間待機します。これにより、連続クラッシュによるサーバー負荷を避けます。
 - `WorkingDirectory`: `config.ini` のような相対パスで指定されたファイルを正しく読み込むために重要です。
 - `User=pi`: `pi` ユーザーでプログラムを実行します。ハードウェア（I2C, GPIOなど）へのアクセス権限を持つユーザーを指定してください。
 - `StandardOutput=journal`: `printf` や `std::cout` による標準出力を `journald` に記録します。ログの確認に便利です。
