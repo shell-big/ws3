@@ -119,7 +119,6 @@ log_ok "システムパッケージのインストール完了"
 # =============================================================================
 banner "ステップ 2/7: Rust / Cargo のインストール"
 
-RUSTUP_BIN="${USER_HOME}/.cargo/bin/rustup"
 CARGO_BIN="${USER_HOME}/.cargo/bin/cargo"
 
 if [ ! -f "$CARGO_BIN" ]; then
