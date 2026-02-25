@@ -253,9 +253,23 @@ fi
 # --- BlueRobotics Navigator オーバーレイスクリプトの実行 ---
 # Navigator Flight Controller ボード専用のカーネルオーバーレイを /boot/config.txt に書き込む。
 # dtparam の手動追記だけでは不十分な Navigator 固有設定（ADC, Barometer 等）を含む。
+#
+# セキュリティ対策:
+#   curl | bash を完全に廃止し、リポジトリに同梱した scripts/configure_board.sh を
+#   ローカルから直接実行することで中間者攻撃リスクをゼロにしています。
+#   アップストリームの変更を取り込む場合は scripts/ 内のファイルを手動で更新してください。
 banner "ステップ 3.5/7: Navigator オーバーレイスクリプトの実行"
-log_info "BlueRobotics configure_board.sh を実行中..."
-curl -fsSL https://raw.githubusercontent.com/bluerobotics/blueos-docker/master/install/boards/configure_board.sh | bash
+
+BUNDLED_CONFIGURE_BOARD="${PROJECT_DIR}/scripts/configure_board.sh"
+
+if [ ! -f "$BUNDLED_CONFIGURE_BOARD" ]; then
+  log_error "同梱スクリプトが見つかりません: $BUNDLED_CONFIGURE_BOARD"
+  log_error "リポジトリが正しくクローンされているか確認してください。"
+  exit 1
+fi
+
+log_info "同梱の configure_board.sh を実行中: $BUNDLED_CONFIGURE_BOARD"
+bash "$BUNDLED_CONFIGURE_BOARD"
 log_ok "オーバーレイスクリプトの実行完了"
 log_warn "変更を反映するには再起動が必要です。セットアップ完了後に sudo reboot を実行してください。"
 REBOOT_REQUIRED=true
