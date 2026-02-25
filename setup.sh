@@ -250,6 +250,30 @@ if command -v i2cdetect &>/dev/null; then
   i2cdetect -y 1 2>/dev/null || log_warn "i2cdetect が失敗しました（I2C が未有効の可能性）"
 fi
 
+# --- BlueRobotics Navigator オーバーレイスクリプトの実行 ---
+# Navigator Flight Controller ボード専用のカーネルオーバーレイを /boot/config.txt に書き込む。
+# dtparam の手動追記だけでは不十分な Navigator 固有設定（ADC, Barometer 等）を含む。
+#
+# セキュリティ対策:
+#   curl | bash を完全に廃止し、リポジトリに同梱した scripts/configure_board.sh を
+#   ローカルから直接実行することで中間者攻撃リスクをゼロにしています。
+#   アップストリームの変更を取り込む場合は scripts/ 内のファイルを手動で更新してください。
+banner "ステップ 3.5/7: Navigator オーバーレイスクリプトの実行"
+
+BUNDLED_CONFIGURE_BOARD="${PROJECT_DIR}/scripts/configure_board.sh"
+
+if [ ! -f "$BUNDLED_CONFIGURE_BOARD" ]; then
+  log_error "同梱スクリプトが見つかりません: $BUNDLED_CONFIGURE_BOARD"
+  log_error "リポジトリが正しくクローンされているか確認してください。"
+  exit 1
+fi
+
+log_info "同梱の configure_board.sh を実行中: $BUNDLED_CONFIGURE_BOARD"
+bash "$BUNDLED_CONFIGURE_BOARD"
+log_ok "オーバーレイスクリプトの実行完了"
+log_warn "変更を反映するには再起動が必要です。セットアップ完了後に sudo reboot を実行してください。"
+REBOOT_REQUIRED=true
+
 # =============================================================================
 # ステップ 3: navigator-lib のクローン＆ビルド
 # =============================================================================
@@ -298,8 +322,24 @@ fi
 run_as_user \
   env PATH="${TOOLCHAIN_BIN}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
   bash -c "cd '${NAVIGATOR_LIB_DIR}' && '${ACTUAL_CARGO}' build"
-log_ok "navigator-lib のビルド完了"
+log_ok "navigator-lib (Rust クレート) のビルド完了"
 log_info "  ライブラリパス: $NAVIGATOR_LIB_DIR/target/debug"
+
+# --- C++ バインディングのビルド（cmake）---
+# examples/cpp には C++ から navigator-lib を使うサンプルが含まれる。
+# cmake でビルドすることで simple / rainbow 等の実行ファイルが build/ に生成される。
+CPP_EXAMPLES_DIR="${NAVIGATOR_LIB_DIR}/examples/cpp"
+if [ -d "$CPP_EXAMPLES_DIR" ]; then
+  log_info "C++ バインディングをビルド中 (cmake)..."
+  run_as_user bash -c "
+    cd '${CPP_EXAMPLES_DIR}' && \
+    cmake -B build -DCMAKE_BUILD_TYPE=Debug && \
+    cmake --build build --config Debug --parallel
+  "
+  log_ok "C++ バインディングのビルド完了: $CPP_EXAMPLES_DIR/build"
+else
+  log_warn "examples/cpp ディレクトリが見つかりません。C++ ビルドをスキップします。"
+fi
 
 # =============================================================================
 # ステップ 4: GStreamer 関連パッケージのインストール

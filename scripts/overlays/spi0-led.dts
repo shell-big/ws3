@@ -1,0 +1,53 @@
+// =============================================================================
+// BlueRobotics spi0-led.dts (同梱版)
+// 元リポジトリ: https://github.com/bluerobotics/blueos-docker
+// パス        : install/overlays/spi0-led.dts
+//
+// Navigator ボードの RGB LED (Neopixel) が接続された
+// Raspberry Pi 4 の SPI0 MOSI ピン専用のデバイスツリーオーバーレイ。
+// =============================================================================
+
+// This is a custom device tree overlay for the spi0 peripheral on the
+// Raspberry Pi 4. It will configure only the spi0 mosi pin
+// (The other spi0 pins will not be driven by the spi0 peripheral,
+// and can be used for other functions). This is to be used with
+// the Blue Robotics Navigator autopilot hat, where the RGB
+// 'neopixel' led data pin is connected to the spi0 mosi pin on the
+// Raspberry Pi 4.
+
+/dts-v1/;
+/plugin/;
+
+
+/ {
+    compatible = "brcm,bcm2835";
+
+    fragment@0 {
+        target = <&spi0_cs_pins>;
+        frag0: __overlay__ {
+            brcm,pins = <>;
+        };
+    };
+
+    fragment@1 {
+        target = <&spi0>;
+        frag1: __overlay__ {
+            cs-gpios = <>;
+            status = "okay";
+        };
+    };
+
+    fragment@2 {
+        target = <&spidev1>;
+        __overlay__ {
+            status = "disabled";
+        };
+    };
+
+    fragment@3 {
+        target = <&spi0_pins>;
+        __overlay__ {
+            brcm,pins = <10>;
+        };
+    };
+};
