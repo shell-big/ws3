@@ -4,6 +4,7 @@
 #include <string>
 #include <map>
 #include <iostream>
+#include <mutex> // std::mutex をインクルード
 
 // 設定値を保持する構造体
 struct AppConfig {
@@ -25,8 +26,30 @@ struct AppConfig {
     // LED 2 (Bボタン) 設定
     int led2_pwm_channel;
     int led2_pwm_off;
-    int led2_pwm_on;
+    int led2_pwm_on1;
+    int led2_pwm_on2;
     int led2_pwm_max;
+
+    // LED 3 (Xボタン) 設定
+    int led3_pwm_channel;
+    int led3_pwm_off;
+    int led3_pwm_on1;
+    int led3_pwm_on2;
+    int led3_pwm_max;
+
+    // LED 4 (Aボタン) 設定
+    int led4_pwm_channel;
+    int led4_pwm_off;
+    int led4_pwm_on1;
+    int led4_pwm_on2;
+    int led4_pwm_max;
+
+    // LED 5 (RBボタン) 設定
+    int led5_pwm_channel;
+    int led5_pwm_off;
+    int led5_pwm_on1;
+    int led5_pwm_on2;
+    int led5_pwm_max;
 
     // スラスター制御設定 (平滑化、ジャイロ補正)
     float smoothing_factor_horizontal;
@@ -82,6 +105,8 @@ struct AppConfig {
 
 // グローバル設定オブジェクト
 extern AppConfig g_config;
+// g_config を保護するためのグローバルミューテックス
+extern std::mutex g_config_mutex;
 
 // 設定ファイルを読み込む関数
 bool loadConfig(const std::string& filename);

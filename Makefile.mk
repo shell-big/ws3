@@ -75,7 +75,30 @@ clean:
 	@echo "Cleaned."
 
 # --- Phony ターゲット (ファイルを表さないターゲット) ---
-.PHONY: all clean $(OBJ_DIR) $(BIN_DIR)
+.PHONY: all clean protect unprotect release $(OBJ_DIR) $(BIN_DIR)
 
 # --- 中間ファイルが削除されるのを防ぐ ---
 .SECONDARY: $(OBJS)
+
+# --- ソースコード保護: オーナー以外は読み書き不可 ---
+# ディレクトリ: rwx------  ファイル: rw-------
+# make protect  → 保護する（他ユーザーから見えなくなる）
+# make unprotect → 保護を解除する（編集できるようになる）
+protect:
+	@echo "Protecting source files (chmod 700/600)..."
+	@find $(SRC_DIR) $(INC_DIR) -type d -exec chmod 700 {} \;
+	@find $(SRC_DIR) $(INC_DIR) -type f -exec chmod 600 {} \;
+	@echo "Protected: $(SRC_DIR)/ $(INC_DIR)/"
+	@echo "Note: Only the owner ($(shell whoami)) can read/write these files."
+
+unprotect:
+	@echo "Removing source file protection (chmod 755/644)..."
+	@find $(SRC_DIR) $(INC_DIR) -type d -exec chmod 755 {} \;
+	@find $(SRC_DIR) $(INC_DIR) -type f -exec chmod 644 {} \;
+	@echo "Unprotected: $(SRC_DIR)/ $(INC_DIR)/"
+
+# --- リリースビルド: ビルドしてソースを保護する（削除はしない）---
+release: all protect
+	@rm -rf $(OBJ_DIR)
+	@echo "Release ready: $(TARGET)"
+	@echo "Source files are protected (chmod 600). Run 'make unprotect' to edit."

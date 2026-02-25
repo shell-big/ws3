@@ -1,6 +1,7 @@
 # ws3 - Navigator Control System 🚀
 
-![Build](https://img.shields.io/badge/build-passing-brightgreen)  
+[![CI](https://github.com/Oryosan59/ws3/actions/workflows/ci.yml/badge.svg)](https://github.com/Oryosan59/ws3/actions/workflows/ci.yml)
+
 リアルタイムセンサ制御・スラスター操作・ゲームパッド入力の統合処理を行う C++ プロジェクトです。BlueRobotics Navigator-lib ライブラリを活用し、ROS などを使用せず軽量で組み込みやすい制御系を構築します。
 
 ---
@@ -62,39 +63,67 @@ ws3/
 
 ---
 
-## 🛠️ ビルド方法
+## � セットアップ（自動）
+
+標準 Raspberry Pi OS 向けのセットアップスクリプトを用意しています。
+Rust のインストールから navigator-lib のビルド、systemd サービスの登録まで**全自動**で行います。
+
+```bash
+git clone https://github.com/Oryosan59/ws3
+cd ws3
+chmod +x setup.sh
+sudo bash setup.sh
+```
+
+> 詳細なトラブルシューティングは [setup.md](./setup.md) を参照してください。
+
+### 🗑️ アンインストール
+
+```bash
+sudo bash delete.sh
+```
+
+setup.sh が行った変更（サービス停止・navigator-lib 削除・Rust 削除など）を安全に元に戻します。  
+ソースコードは削除されないため、`sudo bash setup.sh` で再セットアップできます。
+
+---
+
+## 🛠️ 手動ビルド
 
 ### 🔧 前提条件
-- g++ (C++11以降)
+- g++ (C++11以降) / cmake / GStreamer 1.0
+- [BlueRobotics Navigator-lib](https://github.com/bluerobotics/navigator-lib) がビルド済みであること
+  （デフォルトでは `~/navigator-lib/target/debug` に配置）
+
 ```bash
-sudo apt install build-essential
+# navigator-lib のビルド（nightly Rust が必要）
+git clone https://github.com/bluerobotics/navigator-lib.git ~/navigator-lib
+cd ~/navigator-lib
+rustup default nightly
+cargo build
 ```
-- [BlueRobotics Navigator-lib](https://github.com/bluerobotics/navigator-lib) がビルド済みであること（オマケから確認）  
-  （デフォルトでは `~/navigator-lib/target/debug` にインストールされている想定）
 
-> **注:**  
-> ライブラリのパスは環境変数 `NAVIGATOR_LIB_PATH` で上書き可能です：
->
-> ```bash
-> make -f Makefile.mk NAVIGATOR_LIB_PATH=/your/custom/path
-> ```
->
-> 毎回打つのが面倒な場合は、環境変数に書いておくと便利です：
->
-> ```bash
-> export NAVIGATOR_LIB_PATH=/your/custom/path
-> make -f Makefile.mk
-> ```
+### 🔄 アプリのビルド
 
-
-### 🔄 ビルド手順
 ```bash
-git clone https://github.com/Oryosan59/WS3
-cd WS3
 make -f Makefile.mk
 ```
 
+> NAVIGATOR_LIB_PATH を変更したい場合:
+> ```bash
+> make -f Makefile.mk NAVIGATOR_LIB_PATH=/your/custom/path
+> ```
+
+### 🔐 リリースビルド（ソース保護付き）
+
+```bash
+make -f Makefile.mk release    # ビルド + chmod 600 でソースを保護
+make -f Makefile.mk protect    # 保護のみ
+make -f Makefile.mk unprotect  # 保護解除（編集時）
+```
+
 ### 🧹 クリーンアップ
+
 ```bash
 make -f Makefile.mk clean
 ```
@@ -251,92 +280,51 @@ make -f Makefile.mk clean
 - `DEVICE`: **カメラのデバイスパス**（例: `/dev/video2`）。
 - `PORT`: **映像配信先のUDPポート番号**。
 - `WIDTH` / `HEIGHT`: **映像の解像度**。
-- `FRAMERATE_NUM`: **映像のフレームレート**。
+- `FRAMERATE_NUM` / `FRAMERATE_DEN`: **映像のフレームレート**。
 - `IS_H264_NATIVE_SOURCE`:
   - **説明:** カメラがH.264形式で直接映像を出力できるかどうかのフラグ。
   - **コード上の動作:** 
-    - `true`の場合: `v4l2src -> h264parse -> ...` という軽量なパイプラインを構築します。
-    - `false`の場合: `v4l2src -> jpegdec -> videoconvert -> x264enc -> ...` という、CPUでH.264へのエンコード処理を行うパイプラインを構築します。
+    - `true`の場合: `v4l2src -> h264parse -> ...` という軽量なパイプラインを構築します。ハードウェアエンコーダを利用するため、CPU負荷が低いのが特徴です。
+    - `false`の場合: `v4l2src -> jpegdec -> videoconvert -> x264enc -> ...` という、CPUでH.264へのエンコード処理（ソフトウェアエンコード）を行うパイプラインを構築します。
 - `X264_...` (BITRATE, TUNE, SPEED_PRESET): `IS_H264_NATIVE_SOURCE=false` の場合にのみ使用され、ソフトウェアエンコーダ`x264enc`の画質や速度を調整します。
 
 --- 
 
+
 ## 🤖 サービスの自動起動 (systemd)
 
-Raspberry Pi 起動時に `navigator_control` を自動的に実行し、万が一プログラムが終了しても自動で再起動するように設定することで、ヘッドレス環境での運用が非常に安定します。ここでは `systemd` を使ったサービス化の方法を説明します。
-
-### 1. サービスファイルの作成
-
-以下のコマンドで、`systemd` のサービス定義ファイルを作成します。
+`setup.sh` を使用してセットアップした場合、systemd サービスは自動的に設定されます。
 
 ```bash
-sudo nano /etc/systemd/system/navigator_control.service
-```
-
-### 2. サービスファイルの内容
-
-エディタが開いたら、以下の内容をコピー＆ペーストしてください。`ExecStart` と `WorkingDirectory` のパスは、ご自身の環境に合わせて修正してください。
-
-```ini
-[Unit]
-Description=Navigator Control Service
-After=network.target
-
-[Service]
-ExecStart=/home/pi/ws3lan/bin/navigator_control
-WorkingDirectory=/home/pi/ws3lan
-StandardOutput=journal
-StandardError=journal
-Restart=always
-RestartSec=3
-User=pi
-
-[Install]
-WantedBy=multi-user.target
-```
-
-**🔍 設定のポイント**
-- `Restart=always`: プログラムが終了（正常・異常どちらでも）すると、常に再実行されます。
-- `RestartSec=3`: 再実行する前に3秒間待機します。これにより、連続クラッシュによるサーバー負荷を避けます。
-- `WorkingDirectory`: `config.ini` のような相対パスで指定されたファイルを正しく読み込むために重要です。
-- `User=pi`: `pi` ユーザーでプログラムを実行します。ハードウェア（I2C, GPIOなど）へのアクセス権限を持つユーザーを指定してください。
-- `StandardOutput=journal`: `printf` や `std::cout` による標準出力を `journald` に記録します。ログの確認に便利です。
-
-### 3. サービスの有効化と起動
-
-ファイルを保存 (`Ctrl+X` -> `Y` -> `Enter`) したら、以下のコマンドでサービスをシステムに登録し、自動起動を有効化します。
-
-```bash
-# systemdに新しいサービスファイルを認識させる
-sudo systemctl daemon-reload
-
-# OS起動時の自動実行を有効化
-sudo systemctl enable navigator_control.service
-
-# 今すぐサービスを起動
-sudo systemctl start navigator_control.service
-```
-
-### 4. 状態確認とログの表示
-
-サービスが正しく動作しているか確認するには、以下のコマンドを使用します。
-
-```bash
-# サービスの実行状態を確認 (Active: active (running) と表示されれば成功)
+# 状態確認
 sudo systemctl status navigator_control.service
 
-# リアルタイムでログを表示 (Ctrl+Cで終了)
+# リアルタイムログ
 journalctl -u navigator_control.service -f
+
+# 手動停止 / 再起動
+sudo systemctl stop navigator_control.service
+sudo systemctl restart navigator_control.service
 ```
 
-これで、Raspberry Pi を再起動しても `navigator_control` が自動で実行されるようになります。
+---
+
+## 🔁 CI (GitHub Actions)
+
+| ジョブ | ランナー | 内容 |
+|---|---|---|
+| `ShellCheck` | ubuntu-latest | setup.sh / delete.sh の文法チェック |
+| `Build (ARM64)` | ubuntu-24.04-arm | navigator-lib + アプリを ARM64 でフルビルド |
+
+Push / PR 時に自動実行されます。ステータスはページ上部のバッジで確認できます。
 
 ---
 
 ## 🔌 外部ライブラリ
 
 - [BlueRobotics Navigator-lib](https://github.com/bluerobotics/navigator-lib)  
-  センサ・PWM出力・スラスター制御を行うためのRustベースライブラリ（C/C++バインディングを使用）
+  センサ・PWM出力・スラスター制御を行うためのRustベースライブラリ（C/C++バインディングを使用）  
+  ⚠️ **nightly Rust が必須**（`cpy-binder` が `-Zunpretty=expanded` を使用するため）
 
 ---
 
