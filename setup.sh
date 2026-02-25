@@ -120,10 +120,10 @@ log_ok "システムパッケージのインストール完了"
 banner "ステップ 2/7: Rust / Cargo のインストール"
 
 RUSTUP_BIN="${USER_HOME}/.cargo/bin/rustup"
+CARGO_BIN="${USER_HOME}/.cargo/bin/cargo"
 
-if [ ! -f "$RUSTUP_BIN" ]; then
+if [ ! -f "$CARGO_BIN" ]; then
   log_info "rustup をインストール中..."
-  # sudo -H で HOME を正しく設定してからインストール
   sudo -H -u "$INSTALL_USER" \
     env HOME="${USER_HOME}" \
     bash -c 'curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y'
@@ -132,33 +132,9 @@ else
   log_ok "rustup は既にインストール済みです"
 fi
 
-# =============================================================================
-# 重要: navigator-lib の cpy-binder が -Zunpretty=expanded (nightly 専用フラグ) を
-# 使用するため、nightly ツールチェーンが必須。
-# =============================================================================
-
-# nightly ツールチェーンをインストール・最新化
-log_info "Rust nightly ツールチェーンをインストール・更新中..."
-run_as_user "$RUSTUP_BIN" toolchain install nightly
-run_as_user "$RUSTUP_BIN" default nightly
-log_ok "Rust nightly ツールチェーンの設定完了"
-
-# ツールチェーン名と実際の cargo バイナリパスを解決
-TOOLCHAIN_NAME=$(run_as_user "$RUSTUP_BIN" toolchain list | grep "nightly.*default" | awk '{print $1}')
-if [ -z "$TOOLCHAIN_NAME" ]; then
-  TOOLCHAIN_NAME=$(run_as_user "$RUSTUP_BIN" toolchain list | grep nightly | head -1 | awk '{print $1}')
-fi
-TOOLCHAIN_BIN="${USER_HOME}/.rustup/toolchains/${TOOLCHAIN_NAME}/bin"
-ACTUAL_CARGO="${TOOLCHAIN_BIN}/cargo"
-if [ ! -f "$ACTUAL_CARGO" ]; then
-  log_warn "toolchain 直接パスが見つからないためシムを使用します"
-  ACTUAL_CARGO="${USER_HOME}/.cargo/bin/cargo"
-  TOOLCHAIN_BIN="${USER_HOME}/.cargo/bin"
-fi
-log_info "使用する cargo: $ACTUAL_CARGO"
-# ツールチェーンの bin を PATH に加えて rustc も確実に見えるようにする
-run_as_user env PATH="${TOOLCHAIN_BIN}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
-  "$ACTUAL_CARGO" --version
+# ~/.cargo/env を source して PATH を通す（手動手順と同じ方式）
+export PATH="${USER_HOME}/.cargo/bin:$PATH"
+log_info "cargo バージョン: $(run_as_user "$CARGO_BIN" --version)"
 
 # =============================================================================
 # ステップ 3/7: I2C / SPI / GPIO ハードウェアインターフェースの有効化
@@ -251,55 +227,35 @@ if command -v i2cdetect &>/dev/null; then
 fi
 
 # =============================================================================
-# ステップ 3: navigator-lib のクローン＆ビルド
+# ステップ 4: navigator-lib のクローン＆ビルド（C++ examples/cpp）
+# 手動手順と同じ: cmake -B build -DCMAKE_BUILD_TYPE=Debug && cmake --build build
 # =============================================================================
 banner "ステップ 4/7: navigator-lib のクローン＆ビルド"
 
 if [ -d "$NAVIGATOR_LIB_DIR" ]; then
   log_warn "navigator-lib はすでに存在します: $NAVIGATOR_LIB_DIR"
   log_info "最新版に更新します（git pull）..."
-  sudo -u "$INSTALL_USER" git -C "$NAVIGATOR_LIB_DIR" pull
+  run_as_user git -C "$NAVIGATOR_LIB_DIR" pull
 else
   log_info "navigator-lib をクローン中..."
-  sudo -u "$INSTALL_USER" git clone \
+  run_as_user git clone \
     https://github.com/bluerobotics/navigator-lib.git \
     "$NAVIGATOR_LIB_DIR"
   log_ok "クローン完了: $NAVIGATOR_LIB_DIR"
 fi
 
-log_info "navigator-lib をビルド中（Debug モード）..."
+NAVIGATOR_CPP_DIR="${NAVIGATOR_LIB_DIR}/examples/cpp"
+log_info "C++ サンプルをビルド中: $NAVIGATOR_CPP_DIR"
 
-# --- Cargo.lock バージョン不一致の回避 ---
-# navigator-lib の rust-toolchain.toml が古い nightly を固定している場合、
-# リポジトリの Cargo.lock (v4形式) と互換性がなくビルドが失敗する。
-# Cargo.lock を削除してリセットし、現在の nightly で再生成させる。
-if [ -f "${NAVIGATOR_LIB_DIR}/Cargo.lock" ]; then
-  log_info "Cargo.lock をリセット中（ツールチェーン不一致回避）..."
-  rm -f "${NAVIGATOR_LIB_DIR}/Cargo.lock"
-  log_ok "Cargo.lock を削除しました（再ビルド時に再生成されます）"
-fi
-
-# rust-toolchain.toml による古いツールチェーン固定を上書き（現在の nightly を強制使用）
-log_info "navigator-lib ディレクトリのツールチェーンを nightly に固定上書き中..."
 run_as_user \
-  env HOME="${USER_HOME}" RUSTUP_HOME="${USER_HOME}/.rustup" CARGO_HOME="${USER_HOME}/.cargo" \
-  bash -c "\"${USER_HOME}/.cargo/bin/rustup\" override set nightly --path '${NAVIGATOR_LIB_DIR}'"
-log_ok "ツールチェーン上書き完了"
+  env HOME="${USER_HOME}" \
+      PATH="${USER_HOME}/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+  bash -c "cd '${NAVIGATOR_CPP_DIR}' && \
+    cmake -B build -DCMAKE_BUILD_TYPE=Debug && \
+    cmake --build build --config Debug --parallel"
 
-# 旧バージョンの cargo で汚染されたレジストリキャッシュを削除する
-CARGO_REGISTRY="${USER_HOME}/.cargo/registry"
-if [ -d "$CARGO_REGISTRY" ]; then
-  log_info "cargo レジストリキャッシュをクリア中: $CARGO_REGISTRY"
-  rm -rf "$CARGO_REGISTRY"
-  log_ok "キャッシュをクリアしました"
-fi
-
-# ツールチェーン bin を PATH に加えて rustc も確実に解決できるようにする
-run_as_user \
-  env PATH="${TOOLCHAIN_BIN}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
-  bash -c "cd '${NAVIGATOR_LIB_DIR}' && '${ACTUAL_CARGO}' build"
-log_ok "navigator-lib のビルド完了"
-log_info "  ライブラリパス: $NAVIGATOR_LIB_DIR/target/debug"
+log_ok "navigator-lib (C++ examples) のビルド完了"
+log_info "  ビルド出力: $NAVIGATOR_CPP_DIR/build"
 
 # =============================================================================
 # ステップ 4: GStreamer 関連パッケージのインストール
