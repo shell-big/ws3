@@ -269,6 +269,23 @@ fi
 
 log_info "navigator-lib をビルド中（Debug モード）..."
 
+# --- Cargo.lock バージョン不一致の回避 ---
+# navigator-lib の rust-toolchain.toml が古い nightly を固定している場合、
+# リポジトリの Cargo.lock (v4形式) と互換性がなくビルドが失敗する。
+# Cargo.lock を削除してリセットし、現在の nightly で再生成させる。
+if [ -f "${NAVIGATOR_LIB_DIR}/Cargo.lock" ]; then
+  log_info "Cargo.lock をリセット中（ツールチェーン不一致回避）..."
+  rm -f "${NAVIGATOR_LIB_DIR}/Cargo.lock"
+  log_ok "Cargo.lock を削除しました（再ビルド時に再生成されます）"
+fi
+
+# rust-toolchain.toml による古いツールチェーン固定を上書き（現在の nightly を強制使用）
+log_info "navigator-lib ディレクトリのツールチェーンを nightly に固定上書き中..."
+run_as_user \
+  env HOME="${USER_HOME}" RUSTUP_HOME="${USER_HOME}/.rustup" CARGO_HOME="${USER_HOME}/.cargo" \
+  bash -c "\"${USER_HOME}/.cargo/bin/rustup\" override set nightly --path '${NAVIGATOR_LIB_DIR}'"
+log_ok "ツールチェーン上書き完了"
+
 # 旧バージョンの cargo で汚染されたレジストリキャッシュを削除する
 CARGO_REGISTRY="${USER_HOME}/.cargo/registry"
 if [ -d "$CARGO_REGISTRY" ]; then
