@@ -197,6 +197,18 @@ if [ -n "$BOOT_CONFIG" ]; then
     log_ok "SPI を有効化しました (再起動後に反映)"
     REBOOT_REQUIRED=true
   fi
+
+  # SPI1 オーバーレイの有効化
+  # Navigator ボードの ICM20689 (IMU) は SPI1 (/dev/spidev1.0) を使用する。
+  # dtparam=spi=on だけでは SPI0 しか有効にならないため、spi1 オーバーレイが別途必要。
+  if grep -q "^dtoverlay=spi1" "$BOOT_CONFIG"; then
+    log_ok "SPI1 はすでに有効です (dtoverlay=spi1-3cs)"
+  else
+    log_info "SPI1 オーバーレイを有効化中 (Navigator IMU 用)..."
+    echo "dtoverlay=spi1-3cs" >> "$BOOT_CONFIG"
+    log_ok "SPI1 を有効化しました (再起動後に反映)"
+    REBOOT_REQUIRED=true
+  fi
 else
   log_warn "/boot/config.txt が見つかりません。"
   log_warn "手動で I2C / SPI を有効化してください: sudo raspi-config"
