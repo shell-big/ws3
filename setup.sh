@@ -422,7 +422,7 @@ Environment="LD_LIBRARY_PATH=${USER_HOME}/navigator-lib/target/debug"
 StandardOutput=journal
 StandardError=journal
 Restart=always
-RestartSec=3
+RestartSec=1
 User=${INSTALL_USER}
 SupplementaryGroups=i2c spi gpio
 
