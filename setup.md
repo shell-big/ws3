@@ -207,3 +207,122 @@ sudo i2cdetect -y 1   # 0x40 (PCA9685) が表示されれば Navigator 認識済
 | [`delete.sh`](./delete.sh) | アンインストールスクリプト（setup.sh の変更を元に戻す） |
 | [`Makefile.mk`](./Makefile.mk) | ビルドスクリプト（`make release` でソース保護付きビルド） |
 | [`config.ini`](./config.ini) | アプリケーション設定（PWM・ネットワーク・カメラ等） |
+| [`scripts/configure_board.sh`](./scripts/configure_board.sh) | Navigator ボード初期化スクリプト（同梱版） |
+| [`scripts/bcm_27xx.sh`](./scripts/bcm_27xx.sh) | Pi 4B 専用オーバーレイ設定（同梱版） |
+| [`scripts/overlays/spi0-led.dts`](./scripts/overlays/spi0-led.dts) | Neopixel LED 用 SPI0 デバイスツリーオーバーレイ（同梱版） |
+
+---
+
+## Navigator オーバーレイスクリプトのセキュリティ対策
+
+### 背景: `curl | bash` の問題
+
+BlueRobotics 公式の Navigator ボード初期化手順では以下のコマンドを使用する:
+
+```bash
+# 公式手順（使用しない）
+sudo su -c 'curl -fsSL https://raw.githubusercontent.com/bluerobotics/blueos-docker/master/install/boards/configure_board.sh | bash'
+```
+
+このパターンには以下のリスクがある:
+
+| リスク | 説明 |
+|---|---|
+| 中間者攻撃 (MITM) | ダウンロードと実行が一体のため、改ざんされたスクリプトが即座に root 権限で実行される |
+| リポジトリ侵害 | master ブランチへの予期しない変更が翌日のセットアップから即反映される |
+| 事後検証不可 | 何が実行されたのか後からトレースできない |
+
+### 採用した対策: スクリプト同梱
+
+`curl` 依存を完全に廃止し、**スクリプトをリポジトリに同梱してローカルから実行**している。
+
+```
+scripts/
+├── configure_board.sh      ← Pi のモデル判定・ボード別スクリプトの振り分け
+├── bcm_27xx.sh             ← Pi 4B (BCM27XX) 専用のオーバーレイ設定
+└── overlays/
+    └── spi0-led.dts        ← Neopixel LED 用 SPI0 デバイスツリーオーバーレイ
+```
+
+`setup.sh` からは以下のように呼び出す:
+
+```bash
+bash "${PROJECT_DIR}/scripts/configure_board.sh"
+```
+
+#### `configure_board.sh` の内部構造
+
+スクリプトがボードを判定し、対応するサブスクリプトをローカルから呼び出す:
+
+```
+/proc/device-tree/model を読む
+  ├── Raspberry Pi [0-3] → scripts/bcm_28xx.sh (同梱なければ未サポート)
+  ├── Raspberry Pi 4     → scripts/bcm_27xx.sh ← Pi 4B はここ
+  └── Raspberry Pi 5     → bcm_2712.sh (未同梱)
+```
+
+#### `bcm_27xx.sh` が行う設定（Pi 4B 専用）
+
+| 設定内容 | 詳細 |
+|---|---|
+| SPI0 オーバーレイコンパイル | `spi0-led.dts` を `dtc` でコンパイルし `/boot/overlays/` に配置 |
+| `[pi4]` セクション追加 | `/boot/config.txt` に Pi 4 専用セクションを追加 |
+| UART 有効化 | uart1 / uart3 / uart4 / uart5 の dtoverlay 追加 |
+| I2C 有効化 | i2c1 / i2c4 / i2c6 を baudrate 指定付きで有効化 |
+| SPI 有効化 | spi0-led / spi1-3cs のオーバーレイ追加 |
+| GPIO 設定 | Navigator ボード用ピン設定（11, 24, 25, 37） |
+| カーネルモジュール | `bcm2835-v4l2` / `i2c-bcm2835` / `i2c-dev` を `/etc/modules` に追加 |
+| シリアル | `cmdline.txt` からシリアルコンソール設定を除去 |
+| cgroup 有効化 | cpuset / memory の cgroup を cmdline に追加 |
+| USB OTG | dwc2 / g_ether を有効化 |
+| ファームウェア更新 | Bullseye のみ: rpi-update で固定バージョンに更新 |
+
+> ⚠️ 上記の設定はすべて **再起動後に反映**される。  
+> `setup.sh` 完了後に必ず `sudo reboot` を実行すること。
+
+---
+
+## アップストリーム追従
+
+「アップストリーム追従」とは、**BlueRobotics 本家リポジトリが更新されたとき、同梱スクリプトに手動で反映する作業**のこと。  
+スクリプトを同梱した副作用として、本家の更新が自動では反映されなくなる。
+
+### 追従が必要になるタイミング
+
+- 新しい Raspberry Pi ハードウェアへの対応（Pi 5 / 6 等）
+- Raspberry Pi OS の新バージョン（Bookworm の次等）での設定変更
+- Navigator ボードのハードウェアリビジョン変更
+
+### 手順
+
+1. **本家の最新版を確認する**
+
+   ```bash
+   # ブラウザで差分を確認
+   # https://github.com/bluerobotics/blueos-docker/commits/master/install/boards/
+   ```
+
+2. **ファイルをダウンロードして差分確認**
+
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/bluerobotics/blueos-docker/master/install/boards/configure_board.sh \
+     -o /tmp/configure_board_upstream.sh
+
+   diff scripts/configure_board.sh /tmp/configure_board_upstream.sh
+   ```
+
+3. **独自変更を保持しながら更新する**
+
+   同梱版には以下の独自変更が加えられているため、単純な上書きではなく差分を確認して取り込む:
+
+   | 変更箇所 | 内容 |
+   |---|---|
+   | `configure_board.sh` | `curl \| bash` → `bash "$SCRIPT_DIR/bcm_27xx.sh"` に変更 |
+   | `bcm_27xx.sh` | `spi0-led.dts` を curl 取得 → ローカルファイル参照に変更 |
+
+4. **動作確認後にコミット**
+
+   ```bash
+   git add scripts/
+   git commit -m "chore: 🔧 BlueRobotics スクリプトをアップストリームに追従"
+   ```
