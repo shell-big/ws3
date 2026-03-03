@@ -31,10 +31,16 @@
 
 ```plaintext
 ws3/
+├── .env                # 環境変数ファイル (ローカル用)
+├── .github/            # GitHub Actions ワークフロー
 ├── .gitignore          # Gitの無視ファイルリスト
+├── ARCHITECTURE.md     # アーキテクチャ図・設計ドキュメント
 ├── config.ini          # 設定ファイル
+├── delete.sh           # アンインストールスクリプト
 ├── Makefile.mk         # Makefile
 ├── README.md           # このファイル
+├── setup.md            # セットアップスクリプトの詳細とトラブルシューティング
+├── setup.sh            # 自動セットアップスクリプト
 ├── include/            # ヘッダーファイル (.h)
 │   ├── config_synchronizer.h
 │   ├── config.h
@@ -43,6 +49,10 @@ ws3/
 │   ├── network.h
 │   ├── sensor_data.h
 │   └── thruster_control.h
+├── scripts/            # 初期化・ユーティリティ・オーバーレイスクリプト群
+│   ├── configure_board.sh
+│   ├── bcm_27xx.sh
+│   └── overlays/
 ├── src/                # ソースファイル (.cpp)
 │   ├── config_synchronizer.cpp
 │   ├── config.cpp
@@ -520,6 +530,9 @@ sudo apt install git i2c-tools
  [BlueRobotics Navigator-lib](https://github.com/bluerobotics/navigator-lib)   のバインディング構築方法と、Raspberry Pi 上で Navigator Flight Controller を使うための準備手順を紹介します
  
 ### 7.1 オーバーレイ設定スクリプトの実行
+本プロジェクトにはオーバーレイスクリプトが同梱されており、セキュアに設定を行えます。
+（※ `setup.sh` を使用してセットアップした場合は、この手順は自動実行されるためスキップ可能です。）
+
 ```bash
 sudo su -c 'curl -fsSL https://raw.githubusercontent.com/bluerobotics/blueos-docker/master/install/boards/configure_board.sh | bash'
 sudo reboot
