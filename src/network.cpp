@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/time.h> // gettimeofday のため
+#include <time.h> // clock_gettime のため
 #include <unistd.h>
 
 // ネットワーク送受信コンテキストを初期化する関数
@@ -24,7 +24,8 @@ bool network_init(NetworkContext *ctx) {
   ctx->send_socket = -1;
   ctx->client_addr_len = sizeof(ctx->client_addr_recv);
   ctx->client_addr_known = false;
-  gettimeofday(&ctx->last_successful_recv_time, NULL); // 現在時刻で初期化
+  clock_gettime(CLOCK_MONOTONIC,
+                &ctx->last_successful_recv_time); // 現在時刻で初期化
 
   // --- 受信ソケット設定 ---
   ctx->recv_socket = socket(AF_INET, SOCK_DGRAM, 0);
@@ -103,7 +104,7 @@ ssize_t network_receive(NetworkContext *ctx, char *buffer, size_t buffer_size) {
 
   ssize_t final_recv_len = -1;
   bool valid_packet_received = false;
-  static struct timeval last_warning_time = {0, 0};
+  static struct timespec last_warning_time = {0, 0};
 
   // OSの受信バッファに溜まっているパケットをすべて読み切るループ (ドレイン)
   while (true) {
@@ -132,12 +133,12 @@ ssize_t network_receive(NetworkContext *ctx, char *buffer, size_t buffer_size) {
       // の場合のみ処理を続行
       if (client_host_val != "0.0.0.0" && client_host_val != client_ip_str) {
         // 警告ログのフラッド（あふれ）を防ぐため、正確に1秒間隔を空ける
-        struct timeval now;
-        gettimeofday(&now, NULL);
+        struct timespec now;
+        clock_gettime(CLOCK_MONOTONIC, &now);
 
         double time_since_last =
             (double)(now.tv_sec - last_warning_time.tv_sec) +
-            (double)(now.tv_usec - last_warning_time.tv_usec) / 1000000.0;
+            (double)(now.tv_nsec - last_warning_time.tv_nsec) / 1000000000.0;
 
         if (time_since_last >= 1.0) {
           fprintf(stderr,
@@ -155,7 +156,8 @@ ssize_t network_receive(NetworkContext *ctx, char *buffer, size_t buffer_size) {
       valid_packet_received = true;
 
       // 送信先の更新処理 (最新のパケットのIP情報を使う)
-      gettimeofday(&ctx->last_successful_recv_time, NULL); // 最終受信時刻を更新
+      clock_gettime(CLOCK_MONOTONIC,
+                    &ctx->last_successful_recv_time); // 最終受信時刻を更新
       if (!ctx->client_addr_known ||
           ctx->client_addr_send.sin_addr.s_addr !=
               ctx->client_addr_recv.sin_addr.s_addr) {
