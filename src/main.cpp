@@ -1,19 +1,19 @@
 // --- インクルード ---
-#include "network.h"             // ネットワーク通信関連 (UDP送受信)
-#include "gamepad.h"             // ゲームパッドデータ構造体とパース関数
-#include "thruster_control.h"    // スラスター制御関連
-#include "sensor_data.h"         // センサーデータ読み取り・フォーマット関連
-#include "gstPipeline.h"         // GStreamerパイプライン起動用
-#include "config.h"              // 設定ファイル読み込みとグローバル設定オブジェクト
+#include "config.h" // 設定ファイル読み込みとグローバル設定オブジェクト
 #include "config_synchronizer.h" // 設定同期用
+#include "gamepad.h"             // ゲームパッドデータ構造体とパース関数
+#include "gstPipeline.h"         // GStreamerパイプライン起動用
+#include "network.h"             // ネットワーク通信関連 (UDP送受信)
+#include "sensor_data.h"         // センサーデータ読み取り・フォーマット関連
+#include "thruster_control.h"    // スラスター制御関連
 
-#include <iostream>   // 標準入出力 (std::cout, std::cerr)
-#include <unistd.h>   // POSIX API (usleep)
-#include <string.h>   // strlen
-#include <sys/time.h> // gettimeofday
-#include <csignal>    // シグナルハンドリング用
-#include <mutex>      // std::mutex, std::lock_guard
-#include <cmath>      // std::copysign を使用するため
+#include <cmath>    // std::copysign を使用するため
+#include <csignal>  // シグナルハンドリング用
+#include <iostream> // 標準入出力 (std::cout, std::cerr)
+#include <mutex>    // std::mutex, std::lock_guard
+#include <string.h> // strlen
+#include <time.h>   // clock_gettime
+#include <unistd.h> // POSIX API (usleep)
 
 // --- グローバル変数 ---
 // AppConfig g_config; // config.cpp で定義
@@ -21,217 +21,214 @@
 static float prev_accel_z_sign = 0.0f; // 前回の accel.z の符号を保存
 
 // --- メイン関数 ---
-int main()
-{
-    printf("Navigator C++ Control Application\n");
-    // --- 設定ファイルの読み込み ---
-    if (!loadConfig("config.ini"))
-    {
-        std::cerr << "致命的エラー: 設定ファイルの初期読み込みに失敗しました。プログラムを終了します。" << std::endl;
-        return -1;
-    }
+int main() {
+  printf("Navigator C++ Control Application\n");
+  // --- 設定ファイルの読み込み ---
+  if (!loadConfig("config.ini")) {
+    std::cerr
+        << "致命的エラー: "
+           "設定ファイルの初期読み込みに失敗しました。プログラムを終了します。"
+        << std::endl;
+    return -1;
+  }
 
-    // --- 設定同期スレッドの開始 ---
-    ConfigSynchronizer config_sync("config.ini");
-    config_sync.start();
+  // --- 設定同期スレッドの開始 ---
+  ConfigSynchronizer config_sync("config.ini");
+  config_sync.start();
 
-    // --- 初期化 ---
-    printf("Initiating navigator module.\n");
-    init(); // Navigator ハードウェアライブラリの初期化 (bindings.h 経由)
+  // --- 初期化 ---
+  printf("Initiating navigator module.\n");
+  init(); // Navigator ハードウェアライブラリの初期化 (bindings.h 経由)
 
-    NetworkContext net_ctx;
-    if (!network_init(&net_ctx))
-    {
-        std::cerr << "ネットワーク初期化失敗。終了します。" << std::endl;
-        return -1;
-    }
+  NetworkContext net_ctx;
+  if (!network_init(&net_ctx)) {
+    std::cerr << "ネットワーク初期化失敗。終了します。" << std::endl;
+    return -1;
+  }
 
-    if (!thruster_init())
-    {
-        std::cerr << "スラスター初期化失敗。終了します。" << std::endl;
-        network_close(&net_ctx);
-        return -1;
-    }
-
-    if (!start_gstreamer_pipelines())
-    {
-        std::cerr << "GStreamerパイプラインの起動に失敗しました。処理を続行します..." << std::endl;
-    }
-
-    // --- メインループ変数 ---
-    GamepadData latest_gamepad_data;
-    char recv_buffer[NET_BUFFER_SIZE];
-    AxisData current_gyro_data = {0.0f, 0.0f, 0.0f};
-    char sensor_buffer[SENSOR_BUFFER_SIZE];
-    unsigned int loop_counter = 0;
-    bool running = true;
-    bool currently_in_failsafe = true;
-
-    int initial_pwm_min;
-    {
-        std::lock_guard<std::mutex> lock(g_config_mutex);
-        initial_pwm_min = g_config.pwm_min;
-    }
-    std::cout << "メインループ開始。" << std::endl;
-    std::cout << "クライアントからの最初のデータ受信を待機しています... (スラスターはPWM: " << initial_pwm_min << ")" << std::endl;
-    thruster_set_all_pwm(initial_pwm_min);
-
-    while (running)
-    {
-        // --- 設定のローカルコピーを取得 ---
-        double current_connection_timeout;
-        unsigned int current_sensor_send_interval;
-        unsigned int current_loop_delay_us;
-        int current_pwm_min;
-
-        {
-            std::lock_guard<std::mutex> lock(g_config_mutex);
-            current_connection_timeout = g_config.connection_timeout_seconds;
-            current_sensor_send_interval = g_config.sensor_send_interval;
-            current_loop_delay_us = g_config.loop_delay_us;
-            current_pwm_min = g_config.pwm_min;
-        }
-
-        // 設定ファイルが外部から更新されたかチェックし、リロードする
-        if (g_config_updated_flag.load())
-        {
-            std::cout << "設定ファイルが更新されました。リロードします..." << std::endl;
-            if (!loadConfig("config.ini"))
-            {
-                std::cerr << "警告: 設定ファイルのリロードに失敗しました。古い設定で動作を継続します。" << std::endl;
-            }
-            g_config_updated_flag.store(false); // フラグをリセット
-        }
-
-        struct timeval current_time_tv;
-        gettimeofday(&current_time_tv, NULL);
-
-        double time_since_last_packet = 0.0;
-        if (net_ctx.client_addr_known)
-        {
-            time_since_last_packet = (current_time_tv.tv_sec - net_ctx.last_successful_recv_time.tv_sec) +
-                                     (current_time_tv.tv_usec - net_ctx.last_successful_recv_time.tv_usec) / 1000000.0;
-        }
-
-        ssize_t recv_len = network_receive(&net_ctx, recv_buffer, sizeof(recv_buffer));
-        bool just_received_packet = (recv_len > 0);
-
-        if (just_received_packet)
-        {
-            if (currently_in_failsafe)
-            {
-                std::cout << "接続確立/再確立。通常動作を再開します。" << std::endl;
-                currently_in_failsafe = false;
-
-                // --- LED状態の同期パケットを送信 ---
-                std::string led_state_str = get_led_state_string();
-                network_send(&net_ctx, led_state_str.c_str(), led_state_str.length());
-                std::cout << "LED状態同期パケットを送信しました: " << led_state_str << std::endl;
-            }
-            std::string received_str(recv_buffer, recv_len);
-            latest_gamepad_data = parseGamepadData(received_str);
-        }
-        else
-        {
-            if (net_ctx.client_addr_known && time_since_last_packet > current_connection_timeout)
-            {
-                if (!currently_in_failsafe)
-                {
-                    std::cout << "接続がタイムアウトしました。フェイルセーフモード (スラスターPWM: " << current_pwm_min << ") に移行します。" << std::endl;
-                    thruster_set_all_pwm(current_pwm_min);
-                    latest_gamepad_data = GamepadData{};
-                    currently_in_failsafe = true;
-                    // GStreamerのクリーンな再確立のため、プロセスを終了してsystemdによる再起動に任せる
-                    std::cout << "フェイルセーフ起動のためプログラムを終了します。" << std::endl;
-                    // LED状態を保存してから終了
-                    thruster_save_led_state_to_file();
-                    running = false;
-                }
-            }
-            if (recv_len < 0 && errno != EAGAIN && errno != EWOULDBLOCK)
-            {
-                std::cerr << "致命的な受信エラー。ループを継続します..." << std::endl;
-            }
-        }
-
-        if (!currently_in_failsafe && running)
-        {
-            current_gyro_data = read_gyro();
-            thruster_update(latest_gamepad_data, current_gyro_data);
-
-            // accel.z の符号反転チェック
-            AxisData current_accel = read_accel();
-            float current_accel_z_sign = std::copysign(1.0f, current_accel.z);
-            if (prev_accel_z_sign == 0.0f)
-            {
-                prev_accel_z_sign = current_accel_z_sign; // 初回は符号を保存
-            }
-            else if (current_accel_z_sign != prev_accel_z_sign && current_accel.z != 0.0f)
-            {
-                std::cout << "致命的エラー: accel.z の符号が反転しました。プログラムを終了します。" << std::endl;
-                // LED状態を保存し、PWM出力を保持して再起動させる
-                thruster_save_led_state_to_file();
-                currently_in_failsafe = true; // クリーンアップ時のPWM無効化をスキップさせるため
-                running = false;
-            }
-            prev_accel_z_sign = current_accel_z_sign; // 現在の符号を保存
-
-            if (loop_counter >= current_sensor_send_interval)
-            {
-                loop_counter = 0;
-                if (read_and_format_sensor_data(sensor_buffer, sizeof(sensor_buffer)))
-                {
-                    std::cout << "[SENSOR LOG] " << sensor_buffer << std::endl;
-                    network_send(&net_ctx, sensor_buffer, strlen(sensor_buffer));
-
-                    // LEDのUIがずれるのを防ぐため、定期的に状態を送信する
-                    std::string led_state_str = get_led_state_string();
-                    network_send(&net_ctx, led_state_str.c_str(), led_state_str.length());
-                }
-                else
-                {
-                    std::cerr << "センサーデータの読み取り/フォーマットに失敗。" << std::endl;
-                }
-            }
-            else
-            {
-                loop_counter++;
-            }
-        }
-        else
-        {
-            loop_counter = 0;
-        }
-
-        usleep(current_loop_delay_us);
-    }
-
-    // --- クリーンアップ ---
-    std::cout << "クリーンアップ処理を開始します..." << std::endl;
-    config_sync.stop();
-    std::cout << "設定同期スレッドを停止しました..." << std::endl;
-
-    int final_pwm_min;
-    {
-        std::lock_guard<std::mutex> lock(g_config_mutex);
-        final_pwm_min = g_config.pwm_min;
-    }
-    thruster_set_all_pwm(final_pwm_min); // 最後に安全な値に設定 (スラスターのみ停止)
-
-    // フェイルセーフ（タイムアウト）による再起動の場合は、PWMを無効化しない
-    if (!currently_in_failsafe)
-    {
-        thruster_disable();
-        std::cout << "PWMの出力を停止しました..." << std::endl;
-    }
-    else
-    {
-        std::cout << "再起動のためPWM出力を保持します (thruster_disableをスキップ)..." << std::endl;
-    }
+  if (!thruster_init()) {
+    std::cerr << "スラスター初期化失敗。終了します。" << std::endl;
     network_close(&net_ctx);
-    std::cout << "ネットワークをクローズしました..." << std::endl;
-    stop_gstreamer_pipelines();
-    std::cout << "Gstreamerパイプラインを停止しました..." << std::endl;
-    std::cout << "プログラム終了。" << std::endl;
-    return 0;
+    return -1;
+  }
+
+  if (!start_gstreamer_pipelines()) {
+    std::cerr
+        << "GStreamerパイプラインの起動に失敗しました。処理を続行します..."
+        << std::endl;
+  }
+
+  // --- メインループ変数 ---
+  GamepadData latest_gamepad_data;
+  char recv_buffer[NET_BUFFER_SIZE];
+  AxisData current_gyro_data = {0.0f, 0.0f, 0.0f};
+  char sensor_buffer[SENSOR_BUFFER_SIZE];
+  unsigned int loop_counter = 0;
+  bool running = true;
+  bool currently_in_failsafe = true;
+
+  int initial_pwm_min;
+  {
+    std::lock_guard<std::mutex> lock(g_config_mutex);
+    initial_pwm_min = g_config.pwm_min;
+  }
+  std::cout << "メインループ開始。" << std::endl;
+  std::cout << "クライアントからの最初のデータ受信を待機しています... "
+               "(スラスターはPWM: "
+            << initial_pwm_min << ")" << std::endl;
+  thruster_set_all_pwm(initial_pwm_min);
+
+  while (running) {
+    // --- 設定のローカルコピーを取得 ---
+    double current_connection_timeout;
+    unsigned int current_sensor_send_interval;
+    unsigned int current_loop_delay_us;
+    int current_pwm_min;
+
+    {
+      std::lock_guard<std::mutex> lock(g_config_mutex);
+      current_connection_timeout = g_config.connection_timeout_seconds;
+      current_sensor_send_interval = g_config.sensor_send_interval;
+      current_loop_delay_us = g_config.loop_delay_us;
+      current_pwm_min = g_config.pwm_min;
+    }
+
+    // 設定ファイルが外部から更新されたかチェックし、リロードする
+    if (g_config_updated_flag.load()) {
+      std::cout << "設定ファイルが更新されました。リロードします..."
+                << std::endl;
+      if (!loadConfig("config.ini")) {
+        std::cerr << "警告: "
+                     "設定ファイルのリロードに失敗しました。古い設定で動作を継"
+                     "続します。"
+                  << std::endl;
+      }
+      g_config_updated_flag.store(false); // フラグをリセット
+    }
+
+    struct timespec current_time_ts;
+    clock_gettime(CLOCK_MONOTONIC, &current_time_ts);
+
+    double time_since_last_packet = 0.0;
+    if (net_ctx.client_addr_known) {
+      time_since_last_packet =
+          (current_time_ts.tv_sec - net_ctx.last_successful_recv_time.tv_sec) +
+          (current_time_ts.tv_nsec -
+           net_ctx.last_successful_recv_time.tv_nsec) /
+              1000000000.0;
+    }
+
+    ssize_t recv_len =
+        network_receive(&net_ctx, recv_buffer, sizeof(recv_buffer));
+    bool just_received_packet = (recv_len > 0);
+
+    if (just_received_packet) {
+      if (currently_in_failsafe) {
+        std::cout << "接続確立/再確立。通常動作を再開します。" << std::endl;
+        currently_in_failsafe = false;
+
+        // --- LED状態の同期パケットを送信 ---
+        std::string led_state_str = get_led_state_string();
+        network_send(&net_ctx, led_state_str.c_str(), led_state_str.length());
+        std::cout << "LED状態同期パケットを送信しました: " << led_state_str
+                  << std::endl;
+      }
+      std::string received_str(recv_buffer, recv_len);
+      latest_gamepad_data = parseGamepadData(received_str);
+    } else {
+      if (net_ctx.client_addr_known &&
+          time_since_last_packet > current_connection_timeout) {
+        if (!currently_in_failsafe) {
+          std::cout << "接続がタイムアウトしました。フェイルセーフモード "
+                       "(スラスターPWM: "
+                    << current_pwm_min << ") に移行します。" << std::endl;
+          thruster_set_all_pwm(current_pwm_min);
+          latest_gamepad_data = GamepadData{};
+          currently_in_failsafe = true;
+          // GStreamerのクリーンな再確立のため、プロセスを終了してsystemdによる再起動に任せる
+          std::cout << "フェイルセーフ起動のためプログラムを終了します。"
+                    << std::endl;
+          // LED状態を保存してから終了
+          thruster_save_led_state_to_file();
+          running = false;
+        }
+      }
+      if (recv_len < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+        std::cerr << "致命的な受信エラー。ループを継続します..." << std::endl;
+      }
+    }
+
+    if (!currently_in_failsafe && running) {
+      current_gyro_data = read_gyro();
+      thruster_update(latest_gamepad_data, current_gyro_data);
+
+      // accel.z の符号反転チェック
+      AxisData current_accel = read_accel();
+      float current_accel_z_sign = std::copysign(1.0f, current_accel.z);
+      if (prev_accel_z_sign == 0.0f) {
+        prev_accel_z_sign = current_accel_z_sign; // 初回は符号を保存
+      } else if (current_accel_z_sign != prev_accel_z_sign &&
+                 current_accel.z != 0.0f) {
+        std::cout << "致命的エラー: accel.z "
+                     "の符号が反転しました。プログラムを終了します。"
+                  << std::endl;
+        // LED状態を保存し、PWM出力を保持して再起動させる
+        thruster_save_led_state_to_file();
+        currently_in_failsafe =
+            true; // クリーンアップ時のPWM無効化をスキップさせるため
+        running = false;
+      }
+      prev_accel_z_sign = current_accel_z_sign; // 現在の符号を保存
+
+      if (loop_counter >= current_sensor_send_interval) {
+        loop_counter = 0;
+        if (read_and_format_sensor_data(sensor_buffer, sizeof(sensor_buffer))) {
+          std::cout << "[SENSOR LOG] " << sensor_buffer << std::endl;
+          network_send(&net_ctx, sensor_buffer, strlen(sensor_buffer));
+
+          // LEDのUIがずれるのを防ぐため、定期的に状態を送信する
+          std::string led_state_str = get_led_state_string();
+          network_send(&net_ctx, led_state_str.c_str(), led_state_str.length());
+        } else {
+          std::cerr << "センサーデータの読み取り/フォーマットに失敗。"
+                    << std::endl;
+        }
+      } else {
+        loop_counter++;
+      }
+    } else {
+      loop_counter = 0;
+    }
+
+    usleep(current_loop_delay_us);
+  }
+
+  // --- クリーンアップ ---
+  std::cout << "クリーンアップ処理を開始します..." << std::endl;
+  config_sync.stop();
+  std::cout << "設定同期スレッドを停止しました..." << std::endl;
+
+  int final_pwm_min;
+  {
+    std::lock_guard<std::mutex> lock(g_config_mutex);
+    final_pwm_min = g_config.pwm_min;
+  }
+  thruster_set_all_pwm(
+      final_pwm_min); // 最後に安全な値に設定 (スラスターのみ停止)
+
+  // フェイルセーフ（タイムアウト）による再起動の場合は、PWMを無効化しない
+  if (!currently_in_failsafe) {
+    thruster_disable();
+    std::cout << "PWMの出力を停止しました..." << std::endl;
+  } else {
+    std::cout
+        << "再起動のためPWM出力を保持します (thruster_disableをスキップ)..."
+        << std::endl;
+  }
+  network_close(&net_ctx);
+  std::cout << "ネットワークをクローズしました..." << std::endl;
+  stop_gstreamer_pipelines();
+  std::cout << "Gstreamerパイプラインを停止しました..." << std::endl;
+  std::cout << "プログラム終了。" << std::endl;
+  return 0;
 }

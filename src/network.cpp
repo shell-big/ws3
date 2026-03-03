@@ -155,7 +155,8 @@ ssize_t network_receive(NetworkContext *ctx, char *buffer, size_t buffer_size) {
       valid_packet_received = true;
 
       // 送信先の更新処理 (最新のパケットのIP情報を使う)
-      gettimeofday(&ctx->last_successful_recv_time, NULL); // 最終受信時刻を更新
+      clock_gettime(CLOCK_MONOTONIC,
+                    &ctx->last_successful_recv_time); // 最終受信時刻を更新
       if (!ctx->client_addr_known ||
           ctx->client_addr_send.sin_addr.s_addr !=
               ctx->client_addr_recv.sin_addr.s_addr) {
