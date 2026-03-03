@@ -9,7 +9,6 @@
 #include <sys/time.h> // gettimeofday のため
 #include <unistd.h>
 
-
 // ネットワーク送受信コンテキストを初期化する関数
 bool network_init(NetworkContext *ctx) {
   if (!ctx)
@@ -122,14 +121,25 @@ ssize_t network_receive(NetworkContext *ctx, char *buffer, size_t buffer_size) {
       inet_ntop(AF_INET, &ctx->client_addr_recv.sin_addr, client_ip_str,
                 INET_ADDRSTRLEN);
 
+      // 安全に設定値を取得する
+      std::string client_host_val;
+      {
+        std::lock_guard<std::mutex> lock(g_config_mutex);
+        client_host_val = g_config.client_host;
+      }
+
       // 設定で許可されたIPアドレス、または "0.0.0.0" (任意)
       // の場合のみ処理を続行
-      if (g_config.client_host != "0.0.0.0" &&
-          g_config.client_host != client_ip_str) {
-        // 警告ログのフラッド（あふれ）を防ぐため、1秒に1回だけ出力する
+      if (client_host_val != "0.0.0.0" && client_host_val != client_ip_str) {
+        // 警告ログのフラッド（あふれ）を防ぐため、正確に1秒間隔を空ける
         struct timeval now;
         gettimeofday(&now, NULL);
-        if (now.tv_sec > last_warning_time.tv_sec) {
+
+        double time_since_last =
+            (double)(now.tv_sec - last_warning_time.tv_sec) +
+            (double)(now.tv_usec - last_warning_time.tv_usec) / 1000000.0;
+
+        if (time_since_last >= 1.0) {
           fprintf(stderr,
                   "警告: 許可されていないIPアドレス (%s) "
                   "からパケットを受信しました（以降の警告は省略）。\n",
