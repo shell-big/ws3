@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/time.h> // gettimeofday のため
+#include <time.h> // clock_gettime のため
 #include <unistd.h>
 
 // ネットワーク送受信コンテキストを初期化する関数
@@ -24,7 +24,8 @@ bool network_init(NetworkContext *ctx) {
   ctx->send_socket = -1;
   ctx->client_addr_len = sizeof(ctx->client_addr_recv);
   ctx->client_addr_known = false;
-  gettimeofday(&ctx->last_successful_recv_time, NULL); // 現在時刻で初期化
+  clock_gettime(CLOCK_MONOTONIC,
+                &ctx->last_successful_recv_time); // 現在時刻で初期化
 
   // --- 受信ソケット設定 ---
   ctx->recv_socket = socket(AF_INET, SOCK_DGRAM, 0);
