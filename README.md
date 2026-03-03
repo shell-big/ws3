@@ -79,7 +79,7 @@ ws3/
 Rust のインストールから navigator-lib のビルド、systemd サービスの登録まで**全自動**で行います。
 
 ```bash
-git clone https://github.com/Oryosan59/ws3
+git clone https://github.com/shell-big/ws3.git
 cd ws3
 chmod +x setup.sh
 sudo bash setup.sh

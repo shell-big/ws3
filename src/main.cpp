@@ -32,9 +32,8 @@ int main() {
     return -1;
   }
 
-  // --- 設定同期スレッドの開始 ---
+  // --- 設定同期スレッドの準備 ---
   ConfigSynchronizer config_sync("config.ini");
-  config_sync.start();
 
   // --- 初期化 ---
   printf("Initiating navigator module.\n");
@@ -57,6 +56,10 @@ int main() {
         << "GStreamerパイプラインの起動に失敗しました。処理を続行します..."
         << std::endl;
   }
+
+  // --- 設定同期スレッドの開始 ---
+  std::cout << "設定同期スレッドを開始します..." << std::endl;
+  config_sync.start();
 
   // --- メインループ変数 ---
   GamepadData latest_gamepad_data;
