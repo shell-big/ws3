@@ -94,6 +94,12 @@ struct AppConfig {
     std::string gst2_x264_tune;
     std::string gst2_x264_speed_preset;
 
+    // リムドライブ設定
+    int rim_drive_channel;
+    int rim_drive_pwm_min;
+    int rim_drive_pwm_neutral;
+    int rim_drive_pwm_max;
+
     // Config Synchronizer settings
     int config_sync_cpp_recv_port;
     std::string config_sync_wpf_host;

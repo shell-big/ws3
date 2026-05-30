@@ -1,10 +1,11 @@
 #ifndef THRUSTER_CONTROL_H // インクルードガード: ヘッダーファイルが複数回インクルードされるのを防ぐ
 #define THRUSTER_CONTROL_H // インクルードガード
 
-#include "gamepad.h"  // GamepadData 構造体の定義が必要なためインクルード
-#include "bindings.h" // AxisData 構造体を使用するため (read_gyro() の戻り値型)
-#include "config.h"   // グローバル設定オブジェクト g_config を使用するため
-#include <string>     // std::string を使用するため
+#include "gamepad.h"   // GamepadData 構造体の定義が必要なためインクルード
+#include "bindings.h"  // AxisData 構造体を使用するため (read_gyro() の戻り値型)
+#include "config.h"    // グローバル設定オブジェクト g_config を使用するため
+#include "rim_drive.h" // DriveMode_t enum および rim_drive 関数を使用するため
+#include <string>      // std::string を使用するため
 
 // --- 定数定義 ---
 // NUM_THRUSTERS はハードウェア固定値なので、ここでは定数として残す
@@ -24,6 +25,7 @@ void thruster_update(const GamepadData &gamepad_data, const AxisData &gyro_data)
 // すべてのスラスターを指定されたPWM値に設定する (LEDは変更しない)
 void thruster_set_all_pwm(int pwm_value);
 // LEDの状態を文字列として取得する (同期用)
+// フォーマット: led_status:led=<state>,led2=<state>,...,thruster=<0/1>,rimdrive=<0/1>
 std::string get_led_state_string();
 
 // LEDの状態をファイルに保存する (フェイルセーフ/再起動時の状態保持用)

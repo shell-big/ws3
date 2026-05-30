@@ -1,10 +1,11 @@
 #include "thruster_control.h"
-#include "config.h"  // グローバル設定オブジェクト g_config を使用するため
-#include <algorithm> // std::max, std::min のため
-#include <cmath>     // std::abs のため
-#include <cstdio>    // std::remove
-#include <fstream>   // std::ofstream, std::ifstream
-#include <stdio.h>   // printf のため
+#include "config.h"     // グローバル設定オブジェクト g_config を使用するため
+#include "rim_drive.h"  // リムドライブ制御モジュール
+#include <algorithm>   // std::max, std::min のため
+#include <cmath>       // std::abs のため
+#include <cstdio>      // std::remove
+#include <fstream>     // std::ofstream, std::ifstream
+#include <stdio.h>     // printf のため
 
 
 // 現在のPWM値を保持する静的変数（実際に出力される値）
@@ -380,25 +381,42 @@ void thruster_update(const GamepadData &gamepad_data,
   // --- PWM信号をスラスターに送信 ---
   printf("--- Thruster and LED PWM (Smoothed) ---\n");
 
-  // 水平スラスター
-  for (int i = 0; i < 4; ++i) {
-    int smoothed_pwm = static_cast<int>(current_pwm_values[i]);
-    set_thruster_pwm(i, smoothed_pwm);
-    printf("Ch%d: Target=%d, Smoothed=%d\n", i, target_horizontal_pwm[i],
-           smoothed_pwm);
+  // 前進/後退スラスター（平滑化後の値）
+  int smoothed_forward_pwm = static_cast<int>(current_pwm_values[4]);
+
+  // 駆動モードに応じてスラスター出力を制御
+  DriveMode_t current_mode = rim_drive_get_mode();
+
+  if (current_mode == RIMDRIVE_ONLY) {
+    // RIMDRIVE_ONLY: スラスターを pwm_min 固定出力
+    for (int i = 0; i < 4; ++i) {
+      set_thruster_pwm(i, g_config.pwm_min);
+    }
+    set_thruster_pwm(4, g_config.pwm_min);
+    set_thruster_pwm(5, g_config.pwm_min);
+    printf("Ch0-5: [RIMDRIVE_ONLY] スラスター PWM_MIN\n");
+  } else {
+    // THRUSTER_ONLY または THRUSTER_RIMDRIVE: スラスターを通常通り制御
+    for (int i = 0; i < 4; ++i) {
+      int smoothed_pwm = static_cast<int>(current_pwm_values[i]);
+      set_thruster_pwm(i, smoothed_pwm);
+      printf("Ch%d: Target=%d, Smoothed=%d\n", i, target_horizontal_pwm[i], smoothed_pwm);
+    }
+    set_thruster_pwm(4, smoothed_forward_pwm);
+    set_thruster_pwm(5, smoothed_forward_pwm);
+    printf("Ch4&5: Target=%d, Smoothed=%d\n", target_forward_pwm, smoothed_forward_pwm);
   }
 
-  // 前進/後退スラスター
-  int smoothed_forward_pwm = static_cast<int>(current_pwm_values[4]);
-  set_thruster_pwm(4, smoothed_forward_pwm);
-  set_thruster_pwm(5, smoothed_forward_pwm);
-  printf("Ch4&5: Target=%d, Smoothed=%d\n", target_forward_pwm,
-         smoothed_forward_pwm);
+  // リムドライブ出力更新
+  rim_drive_update(gamepad_data);
 
   // --- LED制御 (平滑化なし) ---
   // static int current_led_pwm = g_config.led_pwm_off; // 廃止:
   // ファイルスコープ変数を使用
   static bool y_button_previously_pressed = false;
+
+  // Select（Back）ボタンによる駆動モード切替（毎フレーム呈出）
+  rim_drive_handle_select_button(gamepad_data);
 
   bool y_button_currently_pressed = (gamepad_data.buttons & GamepadButton::Y);
 
@@ -564,19 +582,23 @@ static std::string led_state_to_string(LedState state) {
 
 // LEDの状態を文字列として取得する
 std::string get_led_state_string() {
-  // フォーマット: led_status:led=<state>,led2=<state>,...
-  // ユーザー要求: "pwm_off,pwm_on1,pwm_on2,pwm_max" を送る
-  // 複数のLEDがあるので、それぞれの状態を送る必要があると思われます。
-  // ここではカンマ区切りで各LEDの状態を送ります。
+  // フォーマット: led_status:led=<state>,led2=<state>,...,thruster=<0/1>,rimdrive=<0/1>
 
-  char buffer[256];
+  // 駆動モードに応じてフラグを設定
+  DriveMode_t mode = rim_drive_get_mode();
+  int thruster_enable = (mode == THRUSTER_ONLY || mode == THRUSTER_RIMDRIVE) ? 1 : 0;
+  int rimdrive_enable = (mode == RIMDRIVE_ONLY || mode == THRUSTER_RIMDRIVE) ? 1 : 0;
+
+  char buffer[512];
   snprintf(buffer, sizeof(buffer),
-           "led_status:led=%s,led2=%s,led3=%s,led4=%s,led5=%s",
+           "led_status:led=%s,led2=%s,led3=%s,led4=%s,led5=%s,thruster=%d,rimdrive=%d",
            led_state_to_string(current_led_state).c_str(),
            led_state_to_string(current_led2_state).c_str(),
            led_state_to_string(current_led3_state).c_str(),
            led_state_to_string(current_led4_state).c_str(),
-           led_state_to_string(current_led5_state).c_str());
+           led_state_to_string(current_led5_state).c_str(),
+           thruster_enable,
+           rimdrive_enable);
   return std::string(buffer);
 }
 

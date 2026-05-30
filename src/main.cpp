@@ -4,6 +4,7 @@
 #include "gamepad.h"             // ゲームパッドデータ構造体とパース関数
 #include "gstPipeline.h"         // GStreamerパイプライン起動用
 #include "network.h"             // ネットワーク通信関連 (UDP送受信)
+#include "rim_drive.h"           // リムドライブ制御（モード管理・初期化）
 #include "sensor_data.h"         // センサーデータ読み取り・フォーマット関連
 #include "thruster_control.h"    // スラスター制御関連
 
@@ -50,6 +51,9 @@ int main() {
     network_close(&net_ctx);
     return -1;
   }
+
+  // リムドライブ初期化 (thruster_init の後に実行)
+  rim_drive_init();
 
   if (!start_gstreamer_pipelines()) {
     std::cerr

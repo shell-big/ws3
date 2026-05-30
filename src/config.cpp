@@ -34,7 +34,8 @@ AppConfig::AppConfig() :
     gst2_width(1280), gst2_height(720), gst2_framerate_num(30), gst2_framerate_den(1),
     gst2_is_h264_native_source(false), gst2_rtp_payload_type(96), gst2_rtp_config_interval(1),
     gst2_x264_bitrate(5000), gst2_x264_tune("zerolatency"), gst2_x264_speed_preset("superfast"),
-    config_sync_cpp_recv_port(12348), config_sync_wpf_host("192.168.4.10"), config_sync_wpf_recv_port(12347)
+    config_sync_cpp_recv_port(12348), config_sync_wpf_host("192.168.4.10"), config_sync_wpf_recv_port(12347),
+    rim_drive_channel(5), rim_drive_pwm_min(1100), rim_drive_pwm_neutral(1500), rim_drive_pwm_max(1900)
 {}
 
 // ヘルパー関数: 文字列の前後の空白を削除
@@ -159,6 +160,11 @@ bool loadConfig(const std::string& filename) {
                 if (key == "cpp_recv_port") temp_config.config_sync_cpp_recv_port = std::stoi(value);
                 else if (key == "wpf_host") temp_config.config_sync_wpf_host = value;
                 else if (key == "wpf_recv_port") temp_config.config_sync_wpf_recv_port = std::stoi(value);
+            } else if (current_section == "rimdrive") {
+                if (key == "channel") temp_config.rim_drive_channel = std::stoi(value);
+                else if (key == "minpulse") temp_config.rim_drive_pwm_min = std::stoi(value);
+                else if (key == "neutralpulse") temp_config.rim_drive_pwm_neutral = std::stoi(value);
+                else if (key == "maxpulse") temp_config.rim_drive_pwm_max = std::stoi(value);
             }
         } catch (const std::invalid_argument& e) {
             std::cerr << "エラー: " << filename << " の " << line_num << " 行目: 数値変換エラー (" << key << "=" << value << ") - " << e.what() << std::endl;
