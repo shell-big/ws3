@@ -40,10 +40,10 @@ AppConfig::AppConfig()
       gst2_framerate_den(1), gst2_is_h264_native_source(false),
       gst2_rtp_payload_type(96), gst2_rtp_config_interval(1),
       gst2_x264_bitrate(5000), gst2_x264_tune("zerolatency"),
-      gst2_x264_speed_preset("superfast"), config_sync_cpp_recv_port(12348),
-      config_sync_wpf_host("192.168.4.10"), config_sync_wpf_recv_port(12347),
-      rim_drive_channel(6), rim_drive_pwm_neutral(1500),
-      rim_drive_pwm_max(1900) {}
+      gst2_x264_speed_preset("superfast"), rim_drive_channel(6),
+      rim_drive_pwm_neutral(1500), rim_drive_pwm_max(1900),
+      config_sync_cpp_recv_port(12348), config_sync_wpf_host("192.168.4.10"),
+      config_sync_wpf_recv_port(12347) {}
 
 // ヘルパー関数: 文字列の前後の空白を削除
 static std::string trim(const std::string &str) {

@@ -327,7 +327,6 @@ static void update_horizontal_thrusters(const GamepadData &data,
 static int calculate_forward_reverse_pwm(int value) {
   int pulse_width;
   const int current_max_pwm = g_config.pwm_boost_max;
-  const int current_min_pwm = g_config.pwm_min;
 
   if (value <= g_config.joystick_deadzone) {
     pulse_width = g_config.pwm_min;
