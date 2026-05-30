@@ -96,7 +96,6 @@ struct AppConfig {
 
     // リムドライブ設定
     int rim_drive_channel;
-    int rim_drive_pwm_min;
     int rim_drive_pwm_neutral;
     int rim_drive_pwm_max;
 

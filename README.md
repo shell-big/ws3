@@ -259,6 +259,20 @@ make -f Makefile.mk clean
 
 --- 
 
+### `[RimDrive]`
+**役割:** リムドライブ（車輪駆動）のPWM信号特性と接続チャンネルを定義します。
+**参照コード:** `src/rim_drive.cpp`, `src/thruster_control.cpp`
+
+- `Channel`
+  - **説明:** リムドライブが接続されているPWMチャンネル番号（デフォルトは6）。
+- `NeutralPulse`
+  - **説明:** 回転が停止する中立パルス幅（デフォルトは1500マイクロ秒）。
+- `MaxPulse`
+  - **説明:** 正回転側の最大パルス幅（マイクロ秒）。
+  - **コード上の動作:** 右スティックのY軸入力に応じて、`NeutralPulse`から`MaxPulse`の間で前進方向のPWM出力が計算・制限されます。
+
+--- 
+
 ### `[NETWORK]`
 **役割:** 操縦PCとのUDP通信に関する設定です。
 **参照コード:** `src/network.cpp`, `src/main.cpp`

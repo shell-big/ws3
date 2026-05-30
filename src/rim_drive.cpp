@@ -24,16 +24,16 @@ static float rim_map_value(float x, float in_min, float in_max, float out_min, f
 
 // リムドライブのPWM値をハードウェアに出力するヘルパー
 static void set_rim_drive_pwm(int pulse_width_us) {
-    // PWM値を Min〜Max の範囲にクランプ
-    int min_pw, neutral_pw, max_pw, channel;
+    // PWM値を Neutral〜Max の範囲にクランプ
+    int neutral_pw, max_pw, channel;
     {
         std::lock_guard<std::mutex> lock(g_config_mutex);
-        min_pw  = g_config.rim_drive_pwm_min;
-        max_pw  = g_config.rim_drive_pwm_max;
-        channel = g_config.rim_drive_channel;
+        neutral_pw = g_config.rim_drive_pwm_neutral;
+        max_pw     = g_config.rim_drive_pwm_max;
+        channel    = g_config.rim_drive_channel;
     }
 
-    int clamped_pwm = std::max(min_pw, std::min(pulse_width_us, max_pw));
+    int clamped_pwm = std::max(neutral_pw, std::min(pulse_width_us, max_pw));
 
     // デューティサイクルを計算して出力
     float pwm_frequency;
