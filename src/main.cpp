@@ -38,6 +38,10 @@ int main() {
 
   // --- 初期化 ---
   printf("Initiating navigator module.\n");
+  // Navigator のバージョンを設定 (init より前に呼ぶ必要がある)
+  // Version2 を指定すると気圧/温度センサが BMP390 に切り替わる (Version1 は BMP280)
+  // Raspberry Pi 版は既定の Pi4 を使用 (Pi5 の場合は set_raspberry_pi_version(Raspberry::Pi5) を追加)
+  set_navigator_version(NavigatorVersion::Version2);
   init(); // Navigator ハードウェアライブラリの初期化 (bindings.h 経由)
 
   NetworkContext net_ctx;
